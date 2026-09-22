@@ -149,7 +149,7 @@ Ensure the .NET 10 SDK is installed on your workstation:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/BookVerse.git
+git clone https://github.com/dante127/BookVerse.git
 cd BookVerse
 
 # 2. Restore dependencies
