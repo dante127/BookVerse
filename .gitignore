@@ -1,0 +1,29 @@
+## Visual Studio / .NET Core
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+.idea/
+.vscode/
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Test Results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# Publish
+publish/
+
+# Rider
+*.sln.iml
+
+# OS files
+.DS_Store
+Thumbs.db
