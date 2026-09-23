@@ -89,6 +89,13 @@ public class ExceptionHandlingMiddleware
                     string.Join(", ", concurrencyEx.Entries.Select(e => e.Entity.GetType().Name)));
                 break;
 
+            case DbUpdateException dbEx when IsUniqueConstraintViolation(dbEx):
+                statusCode = HttpStatusCode.Conflict;
+                message = "A record with the same unique value (for example ISBN) already exists.";
+                _logger.LogWarning(dbEx, "Unique constraint violation on {Entities}",
+                    string.Join(", ", dbEx.Entries.Select(e => e.Entity.GetType().Name)));
+                break;
+
             case DomainException domainEx:
                 statusCode = HttpStatusCode.UnprocessableEntity;
                 message = domainEx.Message;
@@ -123,5 +130,16 @@ public class ExceptionHandlingMiddleware
         });
 
         await context.Response.WriteAsync(json);
+    }
+
+    // Providers surface unique violations only through the inner exception message:
+    // SQL Server (2627/2601) and SQLite phrase this differently.
+    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
+    {
+        var message = ex.InnerException?.Message ?? ex.Message;
+        return message.Contains("Cannot insert duplicate key", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Violation of UNIQUE KEY constraint", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("unique index", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase);
     }
 }

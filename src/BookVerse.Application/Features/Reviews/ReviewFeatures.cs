@@ -38,18 +38,18 @@ public class GetBookReviewsQueryHandler : IRequestHandler<GetBookReviewsQuery, P
 
     public async Task<PagedResult<BookReviewDto>> Handle(GetBookReviewsQuery request, CancellationToken cancellationToken)
     {
+        var (page, pageSize) = Pagination.Normalize(request.Page, request.PageSize);
+
         var query = _context.BookReviews
             .AsNoTracking()
             .Where(r => r.BookId == request.BookId && r.Status == ReviewStatus.Published);
 
         var totalCount = await query.CountAsync(cancellationToken);
 
-        var profiles = await _context.UserProfiles.AsNoTracking().ToDictionaryAsync(p => p.UserId, p => p.DisplayName, cancellationToken);
-
         var items = await query
             .OrderByDescending(r => r.CreatedAt)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(r => new
             {
                 r.Id,
@@ -64,6 +64,12 @@ public class GetBookReviewsQueryHandler : IRequestHandler<GetBookReviewsQuery, P
             })
             .ToListAsync(cancellationToken);
 
+        var userIds = items.Select(r => r.UserId).Distinct().ToList();
+        var profiles = await _context.UserProfiles
+            .AsNoTracking()
+            .Where(p => userIds.Contains(p.UserId))
+            .ToDictionaryAsync(p => p.UserId, p => p.DisplayName, cancellationToken);
+
         var dtos = items.Select(r => new BookReviewDto(
             r.Id,
             r.BookId,
@@ -76,7 +82,7 @@ public class GetBookReviewsQueryHandler : IRequestHandler<GetBookReviewsQuery, P
             r.CreatedAt,
             r.UpdatedAt)).ToList();
 
-        return new PagedResult<BookReviewDto>(dtos, totalCount, request.Page, request.PageSize);
+        return new PagedResult<BookReviewDto>(dtos, totalCount, page, pageSize);
     }
 }
 

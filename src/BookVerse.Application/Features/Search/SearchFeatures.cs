@@ -17,6 +17,8 @@ public class SearchBooksQueryHandler : IRequestHandler<SearchBooksQuery, PagedRe
 
     public async Task<PagedResult<BookSearchResultDto>> Handle(SearchBooksQuery request, CancellationToken cancellationToken)
     {
-        return await _searchService.SearchBooksAsync(request.Filter, cancellationToken);
+        var (page, pageSize) = Pagination.Normalize(request.Filter.Page, request.Filter.PageSize);
+        var filter = request.Filter with { Page = page, PageSize = pageSize };
+        return await _searchService.SearchBooksAsync(filter, cancellationToken);
     }
 }

@@ -159,6 +159,7 @@ public class GetReadingHistoryQueryHandler : IRequestHandler<GetReadingHistoryQu
             throw new UnauthorizedException();
 
         var userId = _currentUserService.UserId.Value;
+        var (page, pageSize) = Pagination.Normalize(request.Page, request.PageSize);
 
         var query = _context.ReadingHistories
             .AsNoTracking()
@@ -168,8 +169,8 @@ public class GetReadingHistoryQueryHandler : IRequestHandler<GetReadingHistoryQu
 
         var items = await query
             .OrderByDescending(rh => rh.Timestamp)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(rh => new ReadingHistoryItemDto(
                 rh.Id,
                 rh.BookId,
@@ -182,7 +183,7 @@ public class GetReadingHistoryQueryHandler : IRequestHandler<GetReadingHistoryQu
                 rh.Timestamp))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<ReadingHistoryItemDto>(items, totalCount, request.Page, request.PageSize);
+        return new PagedResult<ReadingHistoryItemDto>(items, totalCount, page, pageSize);
     }
 }
 

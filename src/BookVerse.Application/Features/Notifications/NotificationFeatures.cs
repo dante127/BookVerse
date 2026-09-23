@@ -1,5 +1,6 @@
 using BookVerse.Application.Common.Exceptions;
 using BookVerse.Application.Common.Interfaces;
+using BookVerse.Application.Common.Models;
 using BookVerse.Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -36,6 +37,7 @@ public class GetNotificationsQueryHandler : IRequestHandler<GetNotificationsQuer
             throw new UnauthorizedException();
 
         var userId = _currentUserService.UserId.Value;
+        var limit = Pagination.NormalizeLimit(request.Limit, defaultLimit: 50);
 
         var query = _context.Notifications
             .AsNoTracking()
@@ -48,7 +50,7 @@ public class GetNotificationsQueryHandler : IRequestHandler<GetNotificationsQuer
 
         return await query
             .OrderByDescending(n => n.CreatedAt)
-            .Take(request.Limit)
+            .Take(limit)
             .Select(n => new NotificationDto(
                 n.Id,
                 n.Type,

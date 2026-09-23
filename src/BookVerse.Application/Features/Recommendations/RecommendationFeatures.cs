@@ -1,5 +1,6 @@
 using BookVerse.Application.Common.Exceptions;
 using BookVerse.Application.Common.Interfaces;
+using BookVerse.Application.Common.Models;
 using MediatR;
 
 namespace BookVerse.Application.Features.Recommendations;
@@ -20,15 +21,17 @@ public class GetRecommendationsQueryHandler : IRequestHandler<GetRecommendations
 
     public async Task<IReadOnlyList<RecommendedBookDto>> Handle(GetRecommendationsQuery request, CancellationToken cancellationToken)
     {
+        var limit = Pagination.NormalizeLimit(request.Limit, defaultLimit: 10);
+
         if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
         {
             // Anonymous fallback to trending books
-            return await _recommendationService.GetTrendingBooksAsync(request.Limit, cancellationToken);
+            return await _recommendationService.GetTrendingBooksAsync(limit, cancellationToken);
         }
 
         return await _recommendationService.GetRecommendationsForUserAsync(
             _currentUserService.UserId.Value,
-            request.Limit,
+            limit,
             cancellationToken);
     }
 }
@@ -47,7 +50,8 @@ public class GetSimilarBooksQueryHandler : IRequestHandler<GetSimilarBooksQuery,
 
     public async Task<IReadOnlyList<RecommendedBookDto>> Handle(GetSimilarBooksQuery request, CancellationToken cancellationToken)
     {
-        return await _recommendationService.GetSimilarBooksAsync(request.BookId, request.Limit, cancellationToken);
+        var limit = Pagination.NormalizeLimit(request.Limit, defaultLimit: 6);
+        return await _recommendationService.GetSimilarBooksAsync(request.BookId, limit, cancellationToken);
     }
 }
 
@@ -65,6 +69,7 @@ public class GetTrendingBooksQueryHandler : IRequestHandler<GetTrendingBooksQuer
 
     public async Task<IReadOnlyList<RecommendedBookDto>> Handle(GetTrendingBooksQuery request, CancellationToken cancellationToken)
     {
-        return await _recommendationService.GetTrendingBooksAsync(request.Limit, cancellationToken);
+        var limit = Pagination.NormalizeLimit(request.Limit, defaultLimit: 10);
+        return await _recommendationService.GetTrendingBooksAsync(limit, cancellationToken);
     }
 }

@@ -47,6 +47,7 @@ public class GetUserLibraryQueryHandler : IRequestHandler<GetUserLibraryQuery, P
             throw new UnauthorizedException();
 
         var userId = _currentUserService.UserId.Value;
+        var (page, pageSize) = Pagination.Normalize(request.Page, request.PageSize);
 
         var query = _context.UserBooks
             .AsNoTracking()
@@ -72,8 +73,8 @@ public class GetUserLibraryQueryHandler : IRequestHandler<GetUserLibraryQuery, P
 
         var items = await query
             .OrderByDescending(ub => ub.LastReadAt ?? ub.AddedAt)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(ub => new
             {
                 ub.Id,
@@ -107,7 +108,7 @@ public class GetUserLibraryQueryHandler : IRequestHandler<GetUserLibraryQuery, P
                 favorites.Contains(item.BookId));
         }).ToList();
 
-        return new PagedResult<UserBookItemDto>(dtos, totalCount, request.Page, request.PageSize);
+        return new PagedResult<UserBookItemDto>(dtos, totalCount, page, pageSize);
     }
 }
 

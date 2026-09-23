@@ -82,6 +82,7 @@ public class GetBooksQueryHandler : IRequestHandler<GetBooksQuery, PagedResult<B
 
     public async Task<PagedResult<BookSummaryDto>> Handle(GetBooksQuery request, CancellationToken cancellationToken)
     {
+        var (page, pageSize) = Pagination.Normalize(request.Page, request.PageSize);
         var query = _context.Books.AsNoTracking();
 
         // Non-staff callers cannot browse by status: Published is forced so that
@@ -109,8 +110,8 @@ public class GetBooksQueryHandler : IRequestHandler<GetBooksQuery, PagedResult<B
         var totalCount = await query.CountAsync(cancellationToken);
 
         var rawItems = await query
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(b => new
             {
                 b.Id,
@@ -146,7 +147,7 @@ public class GetBooksQueryHandler : IRequestHandler<GetBooksQuery, PagedResult<B
             b.Authors,
             b.Genres)).ToList();
 
-        return new PagedResult<BookSummaryDto>(items, totalCount, request.Page, request.PageSize);
+        return new PagedResult<BookSummaryDto>(items, totalCount, page, pageSize);
     }
 }
 
@@ -445,6 +446,10 @@ public class AddBookEditionCommandHandler : IRequestHandler<AddBookEditionComman
             request.Language,
             request.FileSizeInBytes,
             request.FileUrl);
+
+        // The edition is discovered with its Guid key already set, so DetectChanges
+        // would track it as Modified and emit an UPDATE for a row that does not exist.
+        _context.BookEditions.Add(edition);
 
         await _context.SaveChangesAsync(cancellationToken);
         await _cacheService.RemoveAsync($"books:details:{request.BookId}", cancellationToken);

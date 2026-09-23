@@ -53,6 +53,30 @@ public class ApiResponse : ApiResponse<object>
 
 public record ErrorDetail(string Field, string Message);
 
+public static class Pagination
+{
+    public const int DefaultPageSize = 20;
+    public const int MaxPageSize = 50;
+    public const int MaxLimit = 50;
+
+    public static (int Page, int PageSize) Normalize(int page, int pageSize)
+    {
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = DefaultPageSize;
+        if (pageSize > MaxPageSize) pageSize = MaxPageSize;
+        // Keep (page - 1) * pageSize inside int range so Skip() can never overflow.
+        if ((long)(page - 1) * pageSize > int.MaxValue)
+            page = int.MaxValue / pageSize;
+        return (page, pageSize);
+    }
+
+    public static int NormalizeLimit(int limit, int defaultLimit)
+    {
+        if (limit < 1) return defaultLimit;
+        return Math.Min(limit, MaxLimit);
+    }
+}
+
 public class PagedResult<T>
 {
     public IReadOnlyList<T> Items { get; init; } = [];

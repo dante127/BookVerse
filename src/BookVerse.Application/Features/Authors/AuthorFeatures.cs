@@ -53,6 +53,7 @@ public class GetAuthorsQueryHandler : IRequestHandler<GetAuthorsQuery, PagedResu
 
     public async Task<PagedResult<AuthorSummaryDto>> Handle(GetAuthorsQuery request, CancellationToken cancellationToken)
     {
+        var (page, pageSize) = Pagination.Normalize(request.Page, request.PageSize);
         var query = _context.Authors.AsNoTracking();
 
         if (!string.IsNullOrWhiteSpace(request.Search))
@@ -66,8 +67,8 @@ public class GetAuthorsQueryHandler : IRequestHandler<GetAuthorsQuery, PagedResu
         var items = await query
             .OrderByDescending(a => a.FollowersCount)
             .ThenBy(a => a.Name)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(a => new AuthorSummaryDto(
                 a.Id,
                 a.Name,
@@ -78,7 +79,7 @@ public class GetAuthorsQueryHandler : IRequestHandler<GetAuthorsQuery, PagedResu
                 _context.BookAuthors.Count(ba => ba.AuthorId == a.Id)))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<AuthorSummaryDto>(items, totalCount, request.Page, request.PageSize);
+        return new PagedResult<AuthorSummaryDto>(items, totalCount, page, pageSize);
     }
 }
 

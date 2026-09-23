@@ -96,13 +96,18 @@ public class SqlSearchService : ISearchService
             Tags = b.Tags.Select(t => t.Tag.Name).ToList()
         });
 
-        // Ordering & Relevance
-        var pagedItems = await projected
-            .Skip((filter.Page - 1) * filter.PageSize)
-            .Take(filter.PageSize)
+        // Relevance is computed in memory, so paging must happen AFTER scoring.
+        // Load a deterministic, capped candidate window (best quality first) instead of
+        // Skip/Take on unordered SQL rows, which is invalid on SQL Server and non-deterministic.
+        const int MaxCandidates = 500;
+        var candidates = await projected
+            .OrderByDescending(b => b.AverageRating)
+            .ThenByDescending(b => b.RatingsCount)
+            .ThenBy(b => b.Id)
+            .Take(MaxCandidates)
             .ToListAsync(cancellationToken);
 
-        var searchResults = pagedItems.Select(b =>
+        var scored = candidates.Select(b =>
         {
             var score = 1.0;
 
@@ -145,8 +150,14 @@ public class SqlSearchService : ISearchService
                 Math.Round(score, 2));
         })
         .OrderByDescending(r => r.RelevanceScore)
+        .ThenBy(r => r.Id)
         .ToList();
 
-        return new PagedResult<BookSearchResultDto>(searchResults, totalCount, filter.Page, filter.PageSize);
+        var pagedItems = scored
+            .Skip((filter.Page - 1) * filter.PageSize)
+            .Take(filter.PageSize)
+            .ToList();
+
+        return new PagedResult<BookSearchResultDto>(pagedItems, totalCount, filter.Page, filter.PageSize);
     }
 }
