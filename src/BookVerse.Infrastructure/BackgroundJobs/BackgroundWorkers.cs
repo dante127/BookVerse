@@ -115,37 +115,58 @@ public class AggregateReconciliationWorker : BackgroundService
                 using var scope = _serviceProvider.CreateScope();
                 var context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
 
-                var books = await context.Books
+                var bookIds = await context.Books
+                    .AsNoTracking()
                     .Where(b => b.RatingsCount > 0)
+                    .OrderBy(b => b.Id)
                     .Take(50)
+                    .Select(b => b.Id)
                     .ToListAsync(stoppingToken);
 
-                var modified = false;
-
-                foreach (var book in books)
+                if (bookIds.Count != 0)
                 {
-                    var approvedReviews = await context.BookReviews
-                        .Where(r => r.BookId == book.Id && r.Status == Domain.Enums.ReviewStatus.Published)
+                    // One grouped aggregate query instead of loading every review row per book.
+                    var stats = await context.BookReviews
+                        .AsNoTracking()
+                        .Where(r => r.Status == Domain.Enums.ReviewStatus.Published && bookIds.Contains(r.BookId))
+                        .GroupBy(r => r.BookId)
+                        .Select(g => new { BookId = g.Key, Count = g.Count(), Avg = g.Average(r => r.Rating) })
                         .ToListAsync(stoppingToken);
 
-                    if (approvedReviews.Count != 0)
-                    {
-                        var actualCount = approvedReviews.Count;
-                        var actualAvg = Math.Round((decimal)approvedReviews.Average(r => r.Rating), 2);
+                    var statsById = stats.ToDictionary(s => s.BookId);
 
-                        if (book.RatingsCount != actualCount || Math.Abs(book.AverageRating - actualAvg) > 0.05m)
+                    var books = await context.Books
+                        .Where(b => bookIds.Contains(b.Id))
+                        .ToListAsync(stoppingToken);
+
+                    var modified = false;
+
+                    foreach (var book in books)
+                    {
+                        if (statsById.TryGetValue(book.Id, out var s))
                         {
-                            _logger.LogWarning("Healed rating drift on Book {BookId}: ({OldAvg} -> {NewAvg})", book.Id, book.AverageRating, actualAvg);
-                            // Heal drift
-                            book.UpdateExistingRating((int)book.AverageRating, (int)actualAvg);
+                            var actualAvg = Math.Round((decimal)s.Avg, 2);
+                            if (book.RatingsCount != s.Count || Math.Abs(book.AverageRating - actualAvg) > 0.05m)
+                            {
+                                _logger.LogWarning("Healed rating drift on Book {BookId}: ({OldAvg}/{OldCount} -> {NewAvg}/{NewCount})",
+                                    book.Id, book.AverageRating, book.RatingsCount, actualAvg, s.Count);
+                                book.RecalculateRatingAggregates(actualAvg, s.Count);
+                                modified = true;
+                            }
+                        }
+                        else if (book.RatingsCount != 0 || book.AverageRating != 0)
+                        {
+                            _logger.LogWarning("Healed rating drift on Book {BookId}: aggregate points at {Count} reviews but none are published",
+                                book.Id, book.RatingsCount);
+                            book.RecalculateRatingAggregates(0m, 0);
                             modified = true;
                         }
                     }
-                }
 
-                if (modified)
-                {
-                    await context.SaveChangesAsync(stoppingToken);
+                    if (modified)
+                    {
+                        await context.SaveChangesAsync(stoppingToken);
+                    }
                 }
             }
             catch (Exception ex)

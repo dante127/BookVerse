@@ -18,7 +18,7 @@ namespace BookVerse.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, string environmentName = "Production")
     {
         // Interceptors
         services.AddScoped<AuditableEntityInterceptor>();
@@ -37,6 +37,7 @@ public static class DependencyInjection
             {
                 sqlOptions.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName);
                 sqlOptions.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(30), errorNumbersToAdd: null);
+                sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
             });
 
             options.AddInterceptors(auditableInterceptor, eventsInterceptor);
@@ -72,10 +73,14 @@ public static class DependencyInjection
         services.AddScoped<IRecommendationService, DeterministicRecommendationService>();
         services.AddScoped<DatabaseSeeder>();
 
-        // Background Workers
-        services.AddHostedService<TrendingRecalculationWorker>();
-        services.AddHostedService<TokenCleanupWorker>();
-        services.AddHostedService<AggregateReconciliationWorker>();
+        // Background Workers — skipped under the Testing environment, whose shared
+        // SQLite connection cannot serve concurrent worker + request commands.
+        if (!string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddHostedService<TrendingRecalculationWorker>();
+            services.AddHostedService<TokenCleanupWorker>();
+            services.AddHostedService<AggregateReconciliationWorker>();
+        }
 
         return services;
     }

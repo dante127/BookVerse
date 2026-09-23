@@ -36,7 +36,8 @@ public class BookVerseWebApplicationFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<ApplicationDbContext>(options =>
             {
-                options.UseSqlite(_connection);
+                options.UseSqlite(_connection, sqlite =>
+                    sqlite.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
             });
         });
     }

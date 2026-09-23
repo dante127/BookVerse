@@ -20,7 +20,7 @@ builder.Host.UseSerilog((ctx, lc) => lc
 
 // Add Application & Infrastructure
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddInfrastructure(builder.Configuration, builder.Environment.EnvironmentName);
 builder.Services.AddHttpContextAccessor();
 
 // Authentication & JWT

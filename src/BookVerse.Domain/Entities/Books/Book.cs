@@ -208,6 +208,18 @@ public class Book : AuditableEntity<Guid>
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
+    public void RecalculateRatingAggregates(decimal averageRating, int ratingsCount)
+    {
+        if (ratingsCount < 0)
+            throw new BookDomainException("Ratings count cannot be negative.");
+        if (averageRating < 0 || averageRating > 5)
+            throw new BookDomainException("Average rating must be between 0 and 5.");
+
+        RatingsCount = ratingsCount;
+        AverageRating = Math.Round(averageRating, 2);
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
     public void RemoveRating(int oldRating)
     {
         if (RatingsCount <= 1)

@@ -155,4 +155,45 @@ public class BookTests
         book.RatingsCount.Should().Be(1);
         book.AverageRating.Should().Be(4.00m);
     }
+
+    [Fact]
+    public void RecalculateRatingAggregates_ShouldOverwriteBothAggregates()
+    {
+        // Arrange
+        var book = Book.Create("Neuromancer", "Winter data.", 271);
+        book.ApplyNewRating(5);
+        book.ApplyNewRating(5); // Drifted state: avg 5.00, count 2
+
+        // Act
+        book.RecalculateRatingAggregates(3.333m, 7);
+
+        // Assert: rounding to 2 decimals and full overwrite of the count
+        book.RatingsCount.Should().Be(7);
+        book.AverageRating.Should().Be(3.33m);
+    }
+
+    [Fact]
+    public void RecalculateRatingAggregates_ShouldResetToZero_WhenNoPublishedReviewsRemain()
+    {
+        var book = Book.Create("Neuromancer", "Winter data.", 271);
+        book.ApplyNewRating(4);
+
+        book.RecalculateRatingAggregates(0m, 0);
+
+        book.RatingsCount.Should().Be(0);
+        book.AverageRating.Should().Be(0m);
+    }
+
+    [Theory]
+    [InlineData(6.0, 1)]
+    [InlineData(-0.01, 1)]
+    [InlineData(3.0, -1)]
+    public void RecalculateRatingAggregates_ShouldRejectOutOfRangeValues(decimal avg, int count)
+    {
+        var book = Book.Create("Neuromancer", "Winter data.", 271);
+
+        var act = () => book.RecalculateRatingAggregates(avg, count);
+
+        act.Should().Throw<BookDomainException>();
+    }
 }

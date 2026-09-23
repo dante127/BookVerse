@@ -82,9 +82,14 @@ public class DeterministicRecommendationService : IRecommendationService
         }
 
         // 3. Load Candidate Published Books
+        // The Take() window must be ordered, otherwise the database picks an
+        // arbitrary subset of books; quality-first keeps the best candidates.
         var candidates = await _context.Books
             .AsNoTracking()
             .Where(b => b.Status == BookStatus.Published && !excludedBookIds.Contains(b.Id))
+            .OrderByDescending(b => b.RatingsCount)
+            .ThenByDescending(b => b.AverageRating)
+            .ThenBy(b => b.Id)
             .Select(b => new
             {
                 b.Id,
@@ -190,6 +195,9 @@ public class DeterministicRecommendationService : IRecommendationService
         var candidates = await _context.Books
             .AsNoTracking()
             .Where(b => b.Id != bookId && b.Status == BookStatus.Published)
+            .OrderByDescending(b => b.RatingsCount)
+            .ThenByDescending(b => b.AverageRating)
+            .ThenBy(b => b.Id)
             .Select(b => new
             {
                 b.Id,
@@ -284,6 +292,9 @@ public class DeterministicRecommendationService : IRecommendationService
         var books = await _context.Books
             .AsNoTracking()
             .Where(b => b.Status == BookStatus.Published)
+            .OrderByDescending(b => b.RatingsCount)
+            .ThenByDescending(b => b.AverageRating)
+            .ThenBy(b => b.Id)
             .Select(b => new
             {
                 b.Id,
