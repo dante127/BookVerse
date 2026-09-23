@@ -24,7 +24,22 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 
 // Authentication & JWT
-var jwtSecret = builder.Configuration["Jwt:Secret"] ?? "BookVerseSuperEnterpriseSecretKey2026!MustBeAtLeast256BitsLongForHmacSha256SecurityValidation";
+var jwtSecret = builder.Configuration["Jwt:Secret"];
+if (string.IsNullOrWhiteSpace(jwtSecret) || Encoding.UTF8.GetByteCount(jwtSecret) < 32)
+{
+    throw new InvalidOperationException(
+        "Jwt:Secret is missing or shorter than 32 bytes. " +
+        "Configure it via environment (Jwt__Secret), a secret store, or appsettings.Development.json. " +
+        "Refusing to start with an unset or weak signing key.");
+}
+
+if (builder.Environment.IsProduction()
+    && string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("DefaultConnection")))
+{
+    throw new InvalidOperationException(
+        "ConnectionStrings:DefaultConnection is not configured in Production. Refusing to start.");
+}
+
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "BookVerse";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "BookVerseClients";
 
@@ -112,23 +127,33 @@ app.MapControllers();
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/health/ready");
 
-// Attempt database migration and seeding
-try
+// Database migration and seeding.
+// In Production any failure is fatal; in Development the app may boot against an offline DB (logged as warning).
+using (var scope = app.Services.CreateScope())
 {
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    if (db.Database.IsSqlServer() && !app.Environment.IsEnvironment("Testing"))
+    try
     {
-        // In local/docker environments, ensure db is created
-        await db.Database.MigrateAsync();
-        var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
-        await seeder.SeedAsync();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        if (db.Database.IsSqlServer() && !app.Environment.IsEnvironment("Testing"))
+        {
+            await db.Database.MigrateAsync();
+
+            var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+            // Sample content (books, readers, demo accounts) is seeded in Development only.
+            // Production seeds roles/permissions and, when Seed:AdminEmail/AdminPassword are
+            // configured, a single bootstrap admin.
+            await seeder.SeedAsync(withSampleData: app.Environment.IsDevelopment());
+        }
     }
-}
-catch (Exception ex)
-{
-    var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogWarning(ex, "Could not run database migration/seed on startup (database may be offline).");
+    catch (Exception ex) when (!app.Environment.IsDevelopment())
+    {
+        app.Logger.LogCritical(ex, "Database migration/seeding failed. Aborting startup.");
+        throw;
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Could not run database migration/seed on startup (database may be offline).");
+    }
 }
 
 app.Run();

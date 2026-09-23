@@ -5,14 +5,14 @@ services:
     restart: unless-stopped
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Password123!"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env (see .env.example)}
       MSSQL_PID: "Developer"
     ports:
       - "1433:1433"
     volumes:
       - mssql_data:/var/opt/mssql
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Password123!' -C -Q 'SELECT 1' || exit 1"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q 'SELECT 1' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -49,13 +49,15 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_HTTP_PORTS=8080
-      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=BookVerseDb;User Id=sa;Password=Password123!;TrustServerCertificate=True;MultipleActiveResultSets=true;
-      - Redis__Configuration=redis:6379
+      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=BookVerseDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;MultipleActiveResultSets=true;
+      - ConnectionStrings__Redis=redis:6379,abortConnect=false
       - Jwt__Issuer=BookVerse
       - Jwt__Audience=BookVerseAudience
-      - Jwt__SecretKey=SuperSecretProductionKeyThatMustBeAtLeast32BytesLongForHmacSha256!
-      - Jwt__AccessTokenExpirationMinutes=15
+      - Jwt__Secret=${JWT_SECRET:?Set JWT_SECRET (>=32 bytes) in .env}
+      - Jwt__ExpiryMinutes=15
       - Jwt__RefreshTokenExpirationDays=7
+      - Seed__AdminEmail=${SEED_ADMIN_EMAIL:-}
+      - Seed__AdminPassword=${SEED_ADMIN_PASSWORD:-}
     depends_on:
       mssql:
         condition: service_healthy

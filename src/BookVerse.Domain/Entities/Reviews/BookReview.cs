@@ -71,6 +71,29 @@ public class BookReview : AggregateRoot<Guid>
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
+    /// <summary>
+    /// Applies the automated moderation verdict after a content edit.
+    /// Published content that fails the check returns to Pending; Pending content
+    /// that passes becomes Published. Rejected/Hidden reviews are frozen — only an
+    /// explicit moderator action (Approve/Reject) may change them.
+    /// </summary>
+    public void ApplyAutomatedModerationResult(bool isApproved)
+    {
+        switch (Status)
+        {
+            case ReviewStatus.Published when !isApproved:
+                Status = ReviewStatus.Pending;
+                UpdatedAt = DateTimeOffset.UtcNow;
+                break;
+
+            case ReviewStatus.Pending when isApproved:
+                Status = ReviewStatus.Published;
+                UpdatedAt = DateTimeOffset.UtcNow;
+                AddDomainEvent(new ReviewApprovedEvent(Id, BookId, UserId, Rating));
+                break;
+        }
+    }
+
     public void Approve(Guid moderatorId)
     {
         Status = ReviewStatus.Published;

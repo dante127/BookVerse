@@ -122,9 +122,21 @@ public class CreateReviewCommandHandler : IRequestHandler<CreateReviewCommand, B
             throw new UnauthorizedException();
 
         var userId = _currentUserService.UserId.Value;
+        var isStaff = _currentUserService.IsInRole("Admin") || _currentUserService.IsInRole("Moderator");
 
         var book = await _context.Books.FindAsync([request.BookId], cancellationToken);
-        if (book == null) throw new NotFoundException("Book", request.BookId);
+        if (book == null || (!isStaff && book.Status != BookStatus.Published))
+            throw new NotFoundException("Book", request.BookId);
+
+        // Eligibility (BUS-01): reviews are limited to readers who hold the book in their
+        // library. Staff are exempt so moderators can create seed/test content.
+        if (!isStaff)
+        {
+            var inLibrary = await _context.UserBooks
+                .AnyAsync(ub => ub.UserId == userId && ub.BookId == request.BookId, cancellationToken);
+            if (!inLibrary)
+                throw new ForbiddenException("You can only review books that are in your library.");
+        }
 
         var existingReview = await _context.BookReviews
             .FirstOrDefaultAsync(r => r.BookId == request.BookId && r.UserId == userId, cancellationToken);
@@ -137,24 +149,47 @@ public class CreateReviewCommandHandler : IRequestHandler<CreateReviewCommand, B
             request.Content,
             cancellationToken);
 
-        var initialStatus = moderationResult.IsApproved ? ReviewStatus.Published : ReviewStatus.Pending;
-
         BookReview review;
 
         if (existingReview != null)
         {
             var oldRating = existingReview.Rating;
+            var wasPublished = existingReview.Status == ReviewStatus.Published;
+
             existingReview.Update(request.Rating, request.Title, request.Content);
 
-            if (existingReview.Status == ReviewStatus.Published)
+            if (!isStaff)
             {
-                book.UpdateExistingRating(oldRating, request.Rating);
+                // Re-moderate on every content change (BUS-02); Rejected/Hidden stay frozen.
+                existingReview.ApplyAutomatedModerationResult(moderationResult.IsApproved);
+            }
+
+            var isPublished = existingReview.Status == ReviewStatus.Published;
+            var hasContent = !string.IsNullOrWhiteSpace(existingReview.Content);
+
+            if (wasPublished && !isPublished)
+            {
+                book.RemoveRating(existingReview.Rating);
+                if (hasContent) book.DecrementReviewCount();
+            }
+            else if (!wasPublished && isPublished)
+            {
+                book.ApplyNewRating(existingReview.Rating);
+                if (hasContent) book.IncrementReviewCount();
+            }
+            else if (isPublished)
+            {
+                book.UpdateExistingRating(oldRating, existingReview.Rating);
             }
 
             review = existingReview;
         }
         else
         {
+            var initialStatus = moderationResult.IsApproved || isStaff
+                ? ReviewStatus.Published
+                : ReviewStatus.Pending;
+
             review = BookReview.Create(
                 request.BookId,
                 userId,

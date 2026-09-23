@@ -74,7 +74,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthRespo
         var rawRefreshToken = _tokenService.GenerateRefreshToken();
         var hashedRefreshToken = _tokenService.HashToken(rawRefreshToken);
         var jwtId = Guid.NewGuid().ToString();
-        var refreshTokenExpiry = DateTimeOffset.UtcNow.AddDays(7);
+        var refreshTokenExpiry = DateTimeOffset.UtcNow + _tokenService.RefreshTokenLifetime;
 
         user.AddRefreshToken(hashedRefreshToken, jwtId, refreshTokenExpiry, null);
 
@@ -155,7 +155,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponseDto
         var rawRefreshToken = _tokenService.GenerateRefreshToken();
         var hashedRefreshToken = _tokenService.HashToken(rawRefreshToken);
         var jwtId = Guid.NewGuid().ToString();
-        var refreshTokenExpiry = DateTimeOffset.UtcNow.AddDays(7);
+        var refreshTokenExpiry = DateTimeOffset.UtcNow + _tokenService.RefreshTokenLifetime;
 
         var refreshToken = user.AddRefreshToken(hashedRefreshToken, jwtId, refreshTokenExpiry, _currentUserService.IpAddress);
         _context.RefreshTokens.Add(refreshToken);
@@ -244,7 +244,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
         var newRawRefreshToken = _tokenService.GenerateRefreshToken();
         var newHashedRefreshToken = _tokenService.HashToken(newRawRefreshToken);
         var newJwtId = Guid.NewGuid().ToString();
-        var newExpiry = DateTimeOffset.UtcNow.AddDays(7);
+        var newExpiry = DateTimeOffset.UtcNow + _tokenService.RefreshTokenLifetime;
 
         storedToken.Revoke(_currentUserService.IpAddress, "Rotated by client", newHashedRefreshToken);
         var newRefreshToken = user.AddRefreshToken(newHashedRefreshToken, newJwtId, newExpiry, _currentUserService.IpAddress);

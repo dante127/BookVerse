@@ -57,7 +57,9 @@ public class JwtTokenService : ITokenService
 
     public string GenerateAccessToken(User user, UserProfile? profile, IEnumerable<string> permissions)
     {
-        var secret = _configuration["Jwt:Secret"] ?? "EnterpriseBookVerseSuperSecureKeyThatIsAtLeast32BytesLong!";
+        var secret = _configuration["Jwt:Secret"]
+            ?? throw new InvalidOperationException(
+                "Jwt:Secret is not configured. The API validates this at startup; a missing value here means the token service is running outside the API host.");
         var issuer = _configuration["Jwt:Issuer"] ?? "BookVerse";
         var audience = _configuration["Jwt:Audience"] ?? "BookVerseClients";
         var expiryMinutes = double.TryParse(_configuration["Jwt:ExpiryMinutes"], out var mins) ? mins : 15;
@@ -98,6 +100,15 @@ public class JwtTokenService : ITokenService
     {
         var bytes = RandomNumberGenerator.GetBytes(64);
         return Convert.ToBase64String(bytes);
+    }
+
+    public TimeSpan RefreshTokenLifetime
+    {
+        get
+        {
+            var days = int.TryParse(_configuration["Jwt:RefreshTokenExpirationDays"], out var d) && d > 0 ? d : 7;
+            return TimeSpan.FromDays(days);
+        }
     }
 
     public string HashToken(string token)
@@ -142,5 +153,10 @@ public class CurrentUserService : ICurrentUserService
         return _httpContextAccessor.HttpContext?.User
             .FindAll("permission")
             .Any(c => c.Value == permission) ?? false;
+    }
+
+    public bool IsInRole(string role)
+    {
+        return _httpContextAccessor.HttpContext?.User.IsInRole(role) ?? false;
     }
 }

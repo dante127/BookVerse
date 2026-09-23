@@ -10,6 +10,7 @@ using BookVerse.Domain.Entities.Reviews;
 using BookVerse.Domain.Entities.Tags;
 using BookVerse.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace BookVerse.Infrastructure.Persistence.Seeding;
@@ -19,25 +20,49 @@ public class DatabaseSeeder
     private readonly ApplicationDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILogger<DatabaseSeeder> _logger;
+    private readonly IConfiguration _configuration;
 
-    public DatabaseSeeder(ApplicationDbContext context, IPasswordHasher passwordHasher, ILogger<DatabaseSeeder> logger)
+    public DatabaseSeeder(
+        ApplicationDbContext context,
+        IPasswordHasher passwordHasher,
+        ILogger<DatabaseSeeder> logger,
+        IConfiguration configuration)
     {
         _context = context;
         _passwordHasher = passwordHasher;
         _logger = logger;
+        _configuration = configuration;
     }
 
-    public async Task SeedAsync()
+    /// <summary>
+    /// Roles and permissions are always seeded. A bootstrap admin is created only when
+    /// Seed:AdminEmail + Seed:AdminPassword are configured. Sample content (users, books,
+    /// reviews) is written only when withSampleData is true (Development / tests).
+    /// </summary>
+    public async Task SeedAsync(bool withSampleData = true)
     {
-        if (await _context.Users.AnyAsync())
+        await SeedRolesAndPermissionsAsync();
+        await SeedBootstrapAdminAsync();
+
+        if (withSampleData)
         {
-            _logger.LogInformation("Database already seeded. Skipping initial data population.");
-            return;
+            await SeedSampleDataAsync();
         }
+    }
 
-        _logger.LogInformation("Seeding database with realistic development data...");
+    private async Task<Role?> GetRoleAsync(string roleName)
+    {
+        return await _context.Roles.Include(r => r.RolePermissions).ThenInclude(rp => rp.Permission)
+            .FirstOrDefaultAsync(r => r.Name == roleName);
+    }
 
-        // 1. Permissions & Roles
+    private async Task SeedRolesAndPermissionsAsync()
+    {
+        if (await _context.Roles.AnyAsync())
+            return;
+
+        _logger.LogInformation("Seeding permissions and roles...");
+
         var permissions = new[]
         {
             new Permission(Guid.NewGuid(), "books:create", "Create new books"),
@@ -68,9 +93,58 @@ public class DatabaseSeeder
         }
 
         _context.Roles.AddRange(adminRole, moderatorRole, readerRole);
+        await _context.SaveChangesAsync();
+    }
 
-        // 2. Users
-        var (adminHash, adminSalt) = _passwordHasher.HashPassword("Admin12345!");
+    private async Task SeedBootstrapAdminAsync()
+    {
+        var adminEmail = _configuration["Seed:AdminEmail"];
+        var adminPassword = _configuration["Seed:AdminPassword"];
+
+        if (string.IsNullOrWhiteSpace(adminEmail) || string.IsNullOrWhiteSpace(adminPassword))
+            return;
+
+        var normalizedEmail = adminEmail.Trim().ToLowerInvariant();
+        if (await _context.Users.AnyAsync(u => u.Email == normalizedEmail))
+            return;
+
+        var adminRole = await GetRoleAsync("Admin")
+            ?? throw new InvalidOperationException("Admin role missing; SeedRolesAndPermissionsAsync must run first.");
+
+        var (hash, salt) = _passwordHasher.HashPassword(adminPassword);
+        var adminUser = User.Create(normalizedEmail, hash, salt);
+        adminUser.AddRole(adminRole);
+        _context.Users.Add(adminUser);
+        _context.UserProfiles.Add(UserProfile.Create(adminUser.Id, "Platform Administrator"));
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Bootstrap admin account created from Seed configuration.");
+    }
+
+    private async Task SeedSampleDataAsync()
+    {
+        if (await _context.Users.AnyAsync())
+        {
+            _logger.LogInformation("Users already present. Skipping sample data seeding.");
+            return;
+        }
+
+        _logger.LogInformation("Seeding database with realistic development data...");
+
+        var adminRole = await GetRoleAsync("Admin")
+            ?? throw new InvalidOperationException("Admin role missing; SeedRolesAndPermissionsAsync must run first.");
+        var readerRole = await GetRoleAsync("Reader")
+            ?? throw new InvalidOperationException("Reader role missing; SeedRolesAndPermissionsAsync must run first.");
+
+        // 1. Users
+        var devAdminPassword = _configuration["Seed:AdminPassword"];
+        if (string.IsNullOrWhiteSpace(devAdminPassword))
+        {
+            devAdminPassword = "Admin12345!";
+            _logger.LogWarning("Development sample admin seeded with the well-known default password. Set Seed:AdminPassword to override.");
+        }
+
+        var (adminHash, adminSalt) = _passwordHasher.HashPassword(devAdminPassword);
         var adminUser = User.Create("admin@bookverse.io", adminHash, adminSalt);
         adminUser.AddRole(adminRole);
         var adminProfile = UserProfile.Create(adminUser.Id, "Admin Supreme", "Platform Architect & Curator");
@@ -88,7 +162,7 @@ public class DatabaseSeeder
         _context.Users.AddRange(adminUser, reader1, reader2);
         _context.UserProfiles.AddRange(adminProfile, profile1, profile2);
 
-        // 3. Hierarchical Genres
+        // 2. Hierarchical Genres
         var fiction = Genre.Create("Fiction", "fiction", "Works created from imagination.");
         var nonFiction = Genre.Create("Non-Fiction", "non-fiction", "Factual prose writing.");
         _context.Genres.AddRange(fiction, nonFiction);
@@ -106,7 +180,7 @@ public class DatabaseSeeder
         var spaceOpera = Genre.Create("Space Opera", "space-opera", "Interstellar conflict and spacefaring civilizations", sciFi.Id);
         _context.Genres.AddRange(epicFantasy, darkFantasy, cyberpunk, spaceOpera);
 
-        // 4. Tags
+        // 3. Tags
         var tagMagic = Tag.Create("Magic", "magic");
         var tagDragons = Tag.Create("Dragons", "dragons");
         var tagAI = Tag.Create("Artificial Intelligence", "artificial-intelligence");
@@ -116,7 +190,7 @@ public class DatabaseSeeder
         var tagSlowBurn = Tag.Create("Slow Burn", "slow-burn");
         _context.Tags.AddRange(tagMagic, tagDragons, tagAI, tagCybernetics, tagDetective, tagTimeTravel, tagSlowBurn);
 
-        // 5. Authors
+        // 4. Authors
         var author1 = Author.Create("Brandon Sanderson", "brandon-sanderson", "Acclaimed epic fantasy master, creator of the Cosmere universe.", new DateOnly(1975, 12, 19), "United States", "https://brandonsanderson.com");
         var author2 = Author.Create("William Gibson", "william-gibson", "Pioneering science fiction author who coined the term cyberspace.", new DateOnly(1948, 3, 17), "United States", "https://williamgibsonbooks.com");
         var author3 = Author.Create("Agatha Christie", "agatha-christie", "The Queen of Mystery, creator of Hercule Poirot and Miss Marple.", new DateOnly(1890, 9, 15), "United Kingdom");
@@ -124,7 +198,7 @@ public class DatabaseSeeder
         _context.Authors.AddRange(author1, author2, author3, author4);
         await _context.SaveChangesAsync();
 
-        // 6. Books
+        // 5. Books
         var book1 = Book.Create(
             "The Way of Kings",
             "Roshar is a world of stone and storms. Uncanny tempests of incredible power sweep across the rocky terrain. Centuries have passed since the fall of the ten consecrated orders known as the Knights Radiant, but their Shardblades and Shardplate remain.",
@@ -195,10 +269,25 @@ public class DatabaseSeeder
         book4.Publish();
         book4.AddEdition("9780062073488", BookEditionFormat.Paperback, "William Morrow", new DateOnly(2011, 3, 29), 272, "en");
 
-        _context.Books.AddRange(book1, book2, book3, book4);
+        // Draft book: intentionally left unpublished to verify visibility enforcement.
+        var draftBook = Book.Create(
+            "The Knights of the Draft (Unpublished Manuscript)",
+            "An unedited early draft under internal review. Never intended for public catalog exposure until publication.",
+            640,
+            null,
+            null,
+            null,
+            "en",
+            null,
+            null);
+        draftBook.AddAuthor(author1, AuthorRole.Author);
+        draftBook.AddGenre(fantasy);
+        draftBook.AddTag(tagSlowBurn);
+
+        _context.Books.AddRange(book1, book2, book3, book4, draftBook);
         await _context.SaveChangesAsync();
 
-        // 7. Followed Authors
+        // 6. Followed Authors
         _context.AuthorFollowers.Add(new AuthorFollower(reader1.Id, author1.Id));
         author1.IncrementFollowers();
         _context.AuthorFollowers.Add(new AuthorFollower(reader1.Id, author4.Id));
@@ -206,7 +295,7 @@ public class DatabaseSeeder
         _context.AuthorFollowers.Add(new AuthorFollower(reader2.Id, author2.Id));
         author2.IncrementFollowers();
 
-        // 8. User Libraries & Reading Progress
+        // 7. User Libraries & Reading Progress
         var userBook1 = UserBook.Create(reader1.Id, book1.Id, UserBookStatus.Reading);
         var progress1 = ReadingProgress.Create(reader1.Id, book1.Id, book1.PageCount, 450);
         var history1 = ReadingHistory.Record(reader1.Id, book1.Id, ReadingHistoryAction.StartedBook, 0, 450);
@@ -222,11 +311,11 @@ public class DatabaseSeeder
         _context.ReadingProgresses.AddRange(progress1, progress2, progress3);
         _context.ReadingHistories.AddRange(history1, history2);
 
-        // 9. Favorites
+        // 8. Favorites
         _context.FavoriteBooks.Add(new FavoriteBook(reader1.Id, book1.Id));
         _context.FavoriteBooks.Add(new FavoriteBook(reader2.Id, book2.Id));
 
-        // 10. Reviews & Ratings
+        // 9. Reviews & Ratings
         var review1 = BookReview.Create(
             book1.Id,
             reader1.Id,
@@ -259,7 +348,7 @@ public class DatabaseSeeder
 
         _context.BookReviews.AddRange(review1, review2, review3);
 
-        // 11. Reading Goals
+        // 10. Reading Goals
         var currentYear = DateTime.UtcNow.Year;
         var goal1 = ReadingGoal.Create(reader1.Id, currentYear, 25);
         goal1.IncrementCompleted(); // Completed book3

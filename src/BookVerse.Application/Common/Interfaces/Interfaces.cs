@@ -63,6 +63,7 @@ public interface ICurrentUserService
     bool IsAuthenticated { get; }
     string? IpAddress { get; }
     bool HasPermission(string permission);
+    bool IsInRole(string role);
 }
 
 public interface IDateTimeProvider
@@ -81,6 +82,7 @@ public interface ITokenService
     string GenerateAccessToken(User user, UserProfile? profile, IEnumerable<string> permissions);
     string GenerateRefreshToken();
     string HashToken(string token);
+    TimeSpan RefreshTokenLifetime { get; }
 }
 
 public record ReviewModerationResult(bool IsApproved, bool IsFlagged, string? Reason);

@@ -69,19 +69,27 @@ public record GetBooksQuery(
 public class GetBooksQueryHandler : IRequestHandler<GetBooksQuery, PagedResult<BookSummaryDto>>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentUserService _currentUserService;
 
-    public GetBooksQueryHandler(IApplicationDbContext context)
+    public GetBooksQueryHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
     {
         _context = context;
+        _currentUserService = currentUserService;
     }
+
+    private bool CanViewUnpublished =>
+        _currentUserService.IsInRole("Admin") || _currentUserService.IsInRole("Moderator");
 
     public async Task<PagedResult<BookSummaryDto>> Handle(GetBooksQuery request, CancellationToken cancellationToken)
     {
         var query = _context.Books.AsNoTracking();
 
-        if (request.Status.HasValue)
+        // Non-staff callers cannot browse by status: Published is forced so that
+        // Draft/Archived rows are never exposed via an empty or spoofed status filter.
+        var effectiveStatus = CanViewUnpublished ? request.Status : BookStatus.Published;
+        if (effectiveStatus.HasValue)
         {
-            query = query.Where(b => b.Status == request.Status.Value);
+            query = query.Where(b => b.Status == effectiveStatus.Value);
         }
 
         if (request.GenreId.HasValue)
@@ -149,18 +157,24 @@ public class GetBookByIdQueryHandler : IRequestHandler<GetBookByIdQuery, BookDet
 {
     private readonly IApplicationDbContext _context;
     private readonly ICacheService _cacheService;
+    private readonly ICurrentUserService _currentUserService;
 
-    public GetBookByIdQueryHandler(IApplicationDbContext context, ICacheService cacheService)
+    public GetBookByIdQueryHandler(IApplicationDbContext context, ICacheService cacheService, ICurrentUserService currentUserService)
     {
         _context = context;
         _cacheService = cacheService;
+        _currentUserService = currentUserService;
     }
 
     public async Task<BookDetailDto> Handle(GetBookByIdQuery request, CancellationToken cancellationToken)
     {
         var cacheKey = $"books:details:{request.Id}";
         var cached = await _cacheService.GetAsync<BookDetailDto>(cacheKey, cancellationToken);
-        if (cached != null) return cached;
+        if (cached != null)
+        {
+            EnforceVisibility(cached);
+            return cached;
+        }
 
         var book = await _context.Books
             .AsNoTracking()
@@ -197,7 +211,18 @@ public class GetBookByIdQueryHandler : IRequestHandler<GetBookByIdQuery, BookDet
 
         await _cacheService.SetAsync(cacheKey, dto, TimeSpan.FromMinutes(30), cancellationToken);
 
+        EnforceVisibility(dto);
         return dto;
+    }
+
+    private void EnforceVisibility(BookDetailDto dto)
+    {
+        var isStaff = _currentUserService.IsInRole("Admin") || _currentUserService.IsInRole("Moderator");
+        if (!isStaff && dto.Status != BookStatus.Published)
+        {
+            // Same 404 as a missing book so unpublished entries are not enumerable.
+            throw new NotFoundException("Book", dto.Id);
+        }
     }
 }
 
