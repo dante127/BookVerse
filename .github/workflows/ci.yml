@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore BookVerse.sln
+
+      - name: Build
+        run: dotnet build BookVerse.sln --no-restore -c Release --nologo
+
+      - name: Test (unit + integration + API)
+        run: >
+          dotnet test BookVerse.sln --no-build -c Release --logger "trx;LogFileName=result.trx"
+          --collect:"XPlat Code Coverage" --results-directory TestResults
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "## Test results" >> "$GITHUB_STEP_SUMMARY"
+          for f in TestResults/*.trx; do
+            [ -e "$f" ] || continue
+            echo "- $f: $(grep -o 'outcome="[A-Za-z]*"' "$f" | head -1)" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: TestResults/**/*.cobertura.xml
+          retention-days: 14

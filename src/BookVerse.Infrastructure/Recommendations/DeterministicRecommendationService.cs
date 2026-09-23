@@ -111,37 +111,21 @@ public class DeterministicRecommendationService : IRecommendationService
 
         foreach (var b in candidates)
         {
-            // S1: Genre Affinity (0.30)
-            var genreOverlap = likedGenreIds.Count != 0
-                ? (double)b.Genres.Count(g => likedGenreIds.Contains(g.GenreId)) / Math.Max(1, b.Genres.Count)
+            // Signal weights live in RecommendationScoring (TST-01)
+            var sGenre = likedGenreIds.Count != 0
+                ? RecommendationScoring.GenreAffinity(b.Genres.Count(g => likedGenreIds.Contains(g.GenreId)), b.Genres.Count)
                 : 0.0;
-            var sGenre = Math.Min(1.0, genreOverlap);
 
-            // S2: Author Affinity (0.25)
-            var sAuthor = 0.0;
-            if (b.Authors.Any(a => followedAuthorIds.Contains(a.AuthorId))) sAuthor = 1.0;
-            else if (b.Authors.Any(a => preferredAuthorIds.Contains(a.AuthorId))) sAuthor = 0.7;
+            var sAuthor = RecommendationScoring.AuthorAffinity(
+                b.Authors.Any(a => followedAuthorIds.Contains(a.AuthorId)),
+                b.Authors.Any(a => preferredAuthorIds.Contains(a.AuthorId)));
 
-            // S3: Tag Similarity (0.20)
-            var sTag = Math.Min(1.0, b.Tags.Count * 0.2);
+            var sTag = RecommendationScoring.TagSignal(b.Tags.Count);
+            var sRating = RecommendationScoring.RatingSignal(b.AverageRating);
+            var sPop = RecommendationScoring.PopularitySignal(b.RatingsCount);
+            var sRec = RecommendationScoring.RecencySignal(b.PublicationDate, currentYear);
 
-            // S4: Normalized Rating (0.15)
-            var sRating = (double)b.AverageRating / 5.0;
-
-            // S5: Popularity Factor (0.05)
-            var sPop = Math.Min(1.0, Math.Log10(b.RatingsCount + 1) / 4.0);
-
-            // S6: Recency Decay (0.05)
-            var deltaYears = b.PublicationDate.HasValue ? Math.Max(0, currentYear - b.PublicationDate.Value.Year) : 10;
-            var sRec = Math.Exp(-0.05 * deltaYears);
-
-            // Total Score
-            var totalScore = (0.30 * sGenre) +
-                             (0.25 * sAuthor) +
-                             (0.20 * sTag) +
-                             (0.15 * sRating) +
-                             (0.05 * sPop) +
-                             (0.05 * sRec);
+            var totalScore = RecommendationScoring.PersonalizedScore(sGenre, sAuthor, sTag, sRating, sPop, sRec);
 
             var reason = sAuthor >= 0.7
                 ? "Because you follow or highly rated this author"
@@ -221,22 +205,12 @@ public class DeterministicRecommendationService : IRecommendationService
             var cTags = candidate.Tags.Select(t => t.TagId).ToHashSet();
             var cAuthors = candidate.Authors.Select(a => a.AuthorId).ToHashSet();
 
-            // Genre Jaccard overlap
-            var genreUnion = targetGenres.Union(cGenres).Count();
-            var genreOverlap = genreUnion > 0 ? (double)targetGenres.Intersect(cGenres).Count() / genreUnion : 0.0;
-
-            // Tag Jaccard overlap
-            var tagUnion = targetTags.Union(cTags).Count();
-            var tagOverlap = tagUnion > 0 ? (double)targetTags.Intersect(cTags).Count() / tagUnion : 0.0;
-
-            // Author match
+            var genreOverlap = RecommendationScoring.JaccardOverlap(targetGenres, cGenres);
+            var tagOverlap = RecommendationScoring.JaccardOverlap(targetTags, cTags);
             var authorMatch = targetAuthors.Overlaps(cAuthors) ? 1.0 : 0.0;
+            var ratingProximity = RecommendationScoring.RatingProximity(targetBook.AverageRating, candidate.AverageRating);
 
-            // Rating proximity
-            var ratingDiff = Math.Abs((double)(targetBook.AverageRating - candidate.AverageRating));
-            var ratingProximity = Math.Max(0.0, 1.0 - (ratingDiff / 5.0));
-
-            var score = (0.45 * genreOverlap) + (0.35 * tagOverlap) + (0.10 * authorMatch) + (0.10 * ratingProximity);
+            var score = RecommendationScoring.Similarity(genreOverlap, tagOverlap, authorMatch, ratingProximity);
 
             similarList.Add(new RecommendedBookDto(
                 candidate.Id,
@@ -315,7 +289,7 @@ public class DeterministicRecommendationService : IRecommendationService
             recentReviews.TryGetValue(b.Id, out var reviews);
             recentFavorites.TryGetValue(b.Id, out var favs);
 
-            var trendingScore = (reads * 3.0) + (reviews * 2.5) + (favs * 2.0) + ((double)b.AverageRating * 1.5) + Math.Log10(b.RatingsCount + 1);
+            var trendingScore = RecommendationScoring.TrendingScore(reads, reviews, favs, b.AverageRating, b.RatingsCount);
 
             return new RecommendedBookDto(
                 b.Id,

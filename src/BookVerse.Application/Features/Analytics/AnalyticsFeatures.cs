@@ -77,14 +77,21 @@ public class GetUserReadingAnalyticsQueryHandler : IRequestHandler<GetUserReadin
         // Calculate favorite genres from user's completed or reading books
         var userBookIds = userBooks.Select(ub => ub.BookId).ToList();
 
-        var topGenres = await _context.BookGenres
+        // Group by FK in SQL: EF cannot translate GroupBy over a navigation (bg.Genre.Name).
+        var genreCounts = await _context.BookGenres
             .AsNoTracking()
             .Where(bg => userBookIds.Contains(bg.BookId))
-            .GroupBy(bg => bg.Genre.Name)
-            .Select(g => new GenreDistributionDto(g.Key, g.Count()))
+            .GroupBy(bg => bg.GenreId)
+            .Select(g => new { GenreId = g.Key, BookCount = g.Count() })
             .OrderByDescending(g => g.BookCount)
             .Take(5)
             .ToListAsync(cancellationToken);
+
+        var genreNameLookup = await _context.GetGenreNamesAsync(genreCounts.Select(g => g.GenreId).ToList(), cancellationToken);
+        var topGenres = genreCounts
+            .Select(g => new GenreDistributionDto(
+                genreNameLookup.TryGetValue(g.GenreId, out var name) ? name : "Unknown", g.BookCount))
+            .ToList();
 
         // Monthly reading activity (last 6 months)
         var sixMonthsAgo = DateTimeOffset.UtcNow.AddMonths(-6);
@@ -187,12 +194,20 @@ public class GetAdminAnalyticsQueryHandler : IRequestHandler<GetAdminAnalyticsQu
         var totalPages = await _context.ReadingProgresses
             .SumAsync(rp => (long)rp.CurrentPage, cancellationToken);
 
-        var topGenres = await _context.BookGenres
-            .GroupBy(bg => bg.Genre.Name)
-            .Select(g => new GenreDistributionDto(g.Key, g.Count()))
+        // Group by FK in SQL: EF cannot translate GroupBy over a navigation (bg.Genre.Name).
+        var genreCounts = await _context.BookGenres
+            .AsNoTracking()
+            .GroupBy(bg => bg.GenreId)
+            .Select(g => new { GenreId = g.Key, BookCount = g.Count() })
             .OrderByDescending(g => g.BookCount)
             .Take(8)
             .ToListAsync(cancellationToken);
+
+        var genreNameLookup = await _context.GetGenreNamesAsync(genreCounts.Select(g => g.GenreId).ToList(), cancellationToken);
+        var topGenres = genreCounts
+            .Select(g => new GenreDistributionDto(
+                genreNameLookup.TryGetValue(g.GenreId, out var name) ? name : "Unknown", g.BookCount))
+            .ToList();
 
         var dto = new AdminAnalyticsDto(
             totalUsers,
@@ -208,4 +223,16 @@ public class GetAdminAnalyticsQueryHandler : IRequestHandler<GetAdminAnalyticsQu
 
         return dto;
     }
+}
+
+internal static class AnalyticsGenreLookupExtensions
+{
+    public static Task<Dictionary<Guid, string>> GetGenreNamesAsync(
+        this IApplicationDbContext context,
+        IReadOnlyCollection<Guid> genreIds,
+        CancellationToken cancellationToken = default)
+        => context.Genres
+            .AsNoTracking()
+            .Where(g => genreIds.Contains(g.Id))
+            .ToDictionaryAsync(g => g.Id, g => g.Name, cancellationToken);
 }

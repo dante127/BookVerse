@@ -43,3 +43,19 @@ Filter by test category:
 dotnet test --filter Category=Unit
 dotnet test --filter Category=Integration
 ```
+
+---
+
+## 3. Database Provider Fidelity & CI (TST-02)
+
+Tests run against **SQLite in-memory** while production runs **SQL Server**. Accepted trade-off:
+
+| SQL Server-only surface | How it is covered instead |
+| :--- | :--- |
+| Full-text `CONTAINS` search | Fallback LIKE path is tested; the full-text path requires the compose stack smoke run. |
+| `RowVersion` concurrency tokens | `IntegrationTests` assert optimistic-concurrency conflict behavior on the SQLite row-version generator path. |
+| Provider-specific SQL | The analytics queries group by FK ids (never by navigation properties) so both providers translate them identically. |
+
+Deferred: Testcontainers-based SQL Server API tests once container infrastructure exists in CI.
+
+Every push and pull request to `main` runs restore → Release build → full suite + coverage via `.github/workflows/ci.yml`.
