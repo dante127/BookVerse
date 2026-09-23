@@ -4,6 +4,7 @@ using BookVerse.Application.Common.Models;
 using BookVerse.Application.Common.Services;
 using BookVerse.Domain.Entities.Reading;
 using BookVerse.Domain.Enums;
+using BookVerse.Application.Common.Validation;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -220,9 +221,21 @@ public class GetReadingGoalsQueryHandler : IRequestHandler<GetReadingGoalsQuery,
     }
 }
 
-public record SetReadingGoalCommand(int Year, int TargetBooks) : IRequest<ReadingGoalDto>;
+public record SetReadingGoalCommand(int Year, int TargetBooks) : IRequest<SetReadingGoalResult>;
 
-public class SetReadingGoalCommandHandler : IRequestHandler<SetReadingGoalCommand, ReadingGoalDto>
+/// <summary>Created=false when an existing goal for the year was updated (upsert).</summary>
+public record SetReadingGoalResult(ReadingGoalDto Goal, bool Created);
+
+public class SetReadingGoalCommandValidator : AbstractValidator<SetReadingGoalCommand>
+{
+    public SetReadingGoalCommandValidator()
+    {
+        RuleFor(x => x.Year).InclusiveBetween(2000, 2100);
+        RuleFor(x => x.TargetBooks).GreaterThan(0).LessThanOrEqualTo(1000);
+    }
+}
+
+public class SetReadingGoalCommandHandler : IRequestHandler<SetReadingGoalCommand, SetReadingGoalResult>
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
@@ -233,18 +246,17 @@ public class SetReadingGoalCommandHandler : IRequestHandler<SetReadingGoalComman
         _currentUserService = currentUserService;
     }
 
-    public async Task<ReadingGoalDto> Handle(SetReadingGoalCommand request, CancellationToken cancellationToken)
+    public async Task<SetReadingGoalResult> Handle(SetReadingGoalCommand request, CancellationToken cancellationToken)
     {
         if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
             throw new UnauthorizedException();
-
-        if (request.TargetBooks <= 0)
-            throw new Common.Exceptions.ValidationException("targetBooks", "Target books must be greater than zero.");
 
         var userId = _currentUserService.UserId.Value;
 
         var goal = await _context.ReadingGoals
             .FirstOrDefaultAsync(g => g.UserId == userId && g.Year == request.Year, cancellationToken);
+
+        var created = goal == null;
 
         if (goal == null)
         {
@@ -258,11 +270,13 @@ public class SetReadingGoalCommandHandler : IRequestHandler<SetReadingGoalComman
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        return new ReadingGoalDto(
-            goal.Id,
-            goal.Year,
-            goal.TargetBooks,
-            goal.CompletedBooks,
-            goal.TargetBooks > 0 ? Math.Round(((decimal)goal.CompletedBooks / goal.TargetBooks) * 100, 2) : 0);
+        return new SetReadingGoalResult(
+            new ReadingGoalDto(
+                goal.Id,
+                goal.Year,
+                goal.TargetBooks,
+                goal.CompletedBooks,
+                goal.TargetBooks > 0 ? Math.Round(((decimal)goal.CompletedBooks / goal.TargetBooks) * 100, 2) : 0),
+            created);
     }
 }

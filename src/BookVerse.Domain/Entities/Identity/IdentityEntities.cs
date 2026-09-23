@@ -14,6 +14,8 @@ public class User : AuditableEntity<Guid>
     public string PasswordHash { get; private set; } = string.Empty;
     public string PasswordSalt { get; private set; } = string.Empty;
     public UserStatus Status { get; private set; } = UserStatus.Active;
+    public int FailedLoginCount { get; private set; } = 0;
+    public DateTimeOffset? LockoutUntil { get; private set; }
 
     public IReadOnlyCollection<UserRole> UserRoles => _userRoles.AsReadOnly();
     public IReadOnlyCollection<RefreshToken> RefreshTokens => _refreshTokens.AsReadOnly();
@@ -35,6 +37,28 @@ public class User : AuditableEntity<Guid>
             Status = UserStatus.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
+    }
+
+    public bool IsLockedOut(DateTimeOffset now) => LockoutUntil.HasValue && LockoutUntil.Value > now;
+
+    /// <summary>
+    /// Records a failed login; when the consecutive-failure threshold is reached the
+    /// account enters a temporary lockout window. Returns true if this failure locked it.
+    /// </summary>
+    public bool RegisterLoginFailure(int maxAttempts, TimeSpan lockoutDuration, DateTimeOffset now)
+    {
+        FailedLoginCount++;
+        if (FailedLoginCount < maxAttempts) return false;
+
+        FailedLoginCount = 0;
+        LockoutUntil = now + lockoutDuration;
+        return true;
+    }
+
+    public void ResetLoginFailures()
+    {
+        FailedLoginCount = 0;
+        LockoutUntil = null;
     }
 
     public void UpdatePassword(string newHash, string newSalt)

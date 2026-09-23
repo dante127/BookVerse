@@ -1,10 +1,14 @@
 using System.Text;
+using System.Text.Json;
+using System.Threading.RateLimiting;
 using BookVerse.Api.Middleware;
 using BookVerse.Application;
+using BookVerse.Application.Common.Models;
 using BookVerse.Infrastructure;
 using BookVerse.Infrastructure.Persistence;
 using BookVerse.Infrastructure.Persistence.Seeding;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -65,6 +69,76 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
+// SEC-05: fixed-window rate limiting. Partitions are per-IP for unauthenticated traffic;
+// per-account brute force is additionally capped by the DB-backed login lockout.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        var response = context.HttpContext.Response;
+        response.ContentType = "application/json";
+
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+        }
+
+        var body = ApiResponse.Fail("Too many requests. Please try again later.");
+        await response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        }), cancellationToken);
+    };
+
+    options.AddPolicy("login", http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("auth", http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 300,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
+
+// CORS is opt-in per environment via config; without configured origins the API
+// stays non-browsable cross-origin (server-to-server only) instead of wildcarding.
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendClients", policy =>
+    {
+        if (corsOrigins.Length > 0)
+        {
+            policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+        }
+    });
+});
+
+// Framework-level errors (404/405/401 challenges, status-only responses) get RFC 9457 bodies.
+builder.Services.AddProblemDetails();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
@@ -107,6 +181,16 @@ var app = builder.Build();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
+// Baseline protective headers on every response.
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "no-referrer";
+    await next();
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -120,7 +204,34 @@ if (app.Environment.IsDevelopment())
 app.UseSerilogRequestLogging();
 app.UseHttpsRedirection();
 
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
+app.UseCors("FrontendClients");
+
+// Give status-only responses (404/405, bare auth challenges) an RFC 9457 body.
+app.UseStatusCodePages(async context =>
+{
+    var response = context.HttpContext.Response;
+    if (response.HasStarted) return;
+
+    response.ContentType = "application/problem+json";
+    var problem = new
+    {
+        type = "https://httpstatuses.com/" + response.StatusCode,
+        title = "HTTP error",
+        status = response.StatusCode
+    };
+    await response.WriteAsync(JsonSerializer.Serialize(problem, new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    }));
+});
+
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();

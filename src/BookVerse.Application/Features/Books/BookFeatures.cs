@@ -3,6 +3,7 @@ using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Models;
 using BookVerse.Domain.Entities.Books;
 using BookVerse.Domain.Enums;
+using BookVerse.Application.Common.Validation;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -249,9 +250,13 @@ public class CreateBookCommandValidator : AbstractValidator<CreateBookCommand>
     public CreateBookCommandValidator()
     {
         RuleFor(x => x.Title).NotEmpty().MaximumLength(250);
-        RuleFor(x => x.Description).NotEmpty();
-        RuleFor(x => x.PageCount).GreaterThan(0);
+        RuleFor(x => x.Description).NotEmpty().MaximumLength(10000);
+        RuleFor(x => x.PageCount).GreaterThan(0).LessThanOrEqualTo(100000);
+        RuleFor(x => x.Subtitle).MaximumLength(250);
+        RuleFor(x => x.ISBN).IsValidIsbn();
         RuleFor(x => x.Language).NotEmpty().MaximumLength(10);
+        RuleFor(x => x.Publisher).MaximumLength(200);
+        RuleFor(x => x.CoverImageUrl).IsValidWebUrl();
     }
 }
 
@@ -339,6 +344,21 @@ public record UpdateBookCommand(
     string? Publisher,
     string? CoverImageUrl) : IRequest<bool>;
 
+public class UpdateBookCommandValidator : AbstractValidator<UpdateBookCommand>
+{
+    public UpdateBookCommandValidator()
+    {
+        RuleFor(x => x.Title).NotEmpty().MaximumLength(250);
+        RuleFor(x => x.Description).NotEmpty().MaximumLength(10000);
+        RuleFor(x => x.PageCount).GreaterThan(0).LessThanOrEqualTo(100000);
+        RuleFor(x => x.Subtitle).MaximumLength(250);
+        RuleFor(x => x.ISBN).IsValidIsbn();
+        RuleFor(x => x.Language).NotEmpty().MaximumLength(10);
+        RuleFor(x => x.Publisher).MaximumLength(200);
+        RuleFor(x => x.CoverImageUrl).IsValidWebUrl();
+    }
+}
+
 public class UpdateBookCommandHandler : IRequestHandler<UpdateBookCommand, bool>
 {
     private readonly IApplicationDbContext _context;
@@ -417,6 +437,21 @@ public record AddBookEditionCommand(
     string? Language = null,
     long? FileSizeInBytes = null,
     string? FileUrl = null) : IRequest<Guid>;
+
+public class AddBookEditionCommandValidator : AbstractValidator<AddBookEditionCommand>
+{
+    public AddBookEditionCommandValidator()
+    {
+        RuleFor(x => x.BookId).NotEmpty();
+        RuleFor(x => x.ISBN).NotEmpty().IsValidIsbn();
+        RuleFor(x => x.Format).IsInEnum();
+        RuleFor(x => x.Publisher).MaximumLength(200);
+        RuleFor(x => x.PageCount).GreaterThan(0).LessThanOrEqualTo(100000).When(x => x.PageCount.HasValue);
+        RuleFor(x => x.Language).MaximumLength(10);
+        RuleFor(x => x.FileSizeInBytes).GreaterThan(0).When(x => x.FileSizeInBytes.HasValue);
+        RuleFor(x => x.FileUrl).IsValidWebUrl();
+    }
+}
 
 public class AddBookEditionCommandHandler : IRequestHandler<AddBookEditionCommand, Guid>
 {

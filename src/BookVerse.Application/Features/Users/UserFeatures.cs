@@ -1,5 +1,6 @@
 using BookVerse.Application.Common.Exceptions;
 using BookVerse.Application.Common.Interfaces;
+using BookVerse.Application.Common.Validation;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -91,6 +92,7 @@ public class UpdateUserProfileCommandValidator : AbstractValidator<UpdateUserPro
     {
         RuleFor(x => x.DisplayName).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Bio).MaximumLength(1000);
+        RuleFor(x => x.AvatarUrl).IsValidWebUrl().MaximumLength(2000);
         RuleFor(x => x.PreferredLanguage).NotEmpty().MaximumLength(10);
     }
 }

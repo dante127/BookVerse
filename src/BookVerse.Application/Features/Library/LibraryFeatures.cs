@@ -113,10 +113,79 @@ public class GetUserLibraryQueryHandler : IRequestHandler<GetUserLibraryQuery, P
     }
 }
 
-// --- Add Book to Library ---
-public record AddBookToLibraryCommand(Guid BookId, UserBookStatus InitialStatus = UserBookStatus.WantToRead) : IRequest<Guid>;
+// --- Get One Library Entry (backs the Location URI returned on add) ---
+public record GetLibraryBookQuery(Guid BookId) : IRequest<UserBookItemDto>;
 
-public class AddBookToLibraryCommandHandler : IRequestHandler<AddBookToLibraryCommand, Guid>
+public class GetLibraryBookQueryHandler : IRequestHandler<GetLibraryBookQuery, UserBookItemDto>
+{
+    private readonly IApplicationDbContext _context;
+    private readonly ICurrentUserService _currentUserService;
+
+    public GetLibraryBookQueryHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
+    {
+        _context = context;
+        _currentUserService = currentUserService;
+    }
+
+    public async Task<UserBookItemDto> Handle(GetLibraryBookQuery request, CancellationToken cancellationToken)
+    {
+        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
+            throw new UnauthorizedException();
+
+        var userId = _currentUserService.UserId.Value;
+
+        var item = await _context.UserBooks
+            .AsNoTracking()
+            .Where(ub => ub.UserId == userId && ub.BookId == request.BookId)
+            .Select(ub => new
+            {
+                ub.Id,
+                ub.BookId,
+                Title = ub.Book.Title,
+                CoverImageUrl = ub.Book.CoverImageUrl,
+                ub.Status,
+                ub.AddedAt,
+                ub.StartedAt,
+                ub.CompletedAt,
+                ub.LastReadAt
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (item == null)
+            throw new NotFoundException("Library entry", request.BookId);
+
+        var progress = await _context.ReadingProgresses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.UserId == userId && p.BookId == request.BookId, cancellationToken);
+
+        var isFavorite = await _context.FavoriteBooks
+            .AsNoTracking()
+            .AnyAsync(f => f.UserId == userId && f.BookId == request.BookId, cancellationToken);
+
+        return new UserBookItemDto(
+            item.Id,
+            item.BookId,
+            item.Title,
+            item.CoverImageUrl,
+            item.Status,
+            item.AddedAt,
+            item.StartedAt,
+            item.CompletedAt,
+            item.LastReadAt,
+            progress?.CurrentPage,
+            progress?.TotalPages,
+            progress?.Percentage,
+            isFavorite);
+    }
+}
+
+// --- Add Book to Library ---
+public record AddBookToLibraryCommand(Guid BookId, UserBookStatus InitialStatus = UserBookStatus.WantToRead) : IRequest<AddBookToLibraryResult>;
+
+/// <summary>Created=false when the book was already in the library (re-add is an idempotent status update).</summary>
+public record AddBookToLibraryResult(Guid Id, bool Created);
+
+public class AddBookToLibraryCommandHandler : IRequestHandler<AddBookToLibraryCommand, AddBookToLibraryResult>
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
@@ -127,7 +196,7 @@ public class AddBookToLibraryCommandHandler : IRequestHandler<AddBookToLibraryCo
         _currentUserService = currentUserService;
     }
 
-    public async Task<Guid> Handle(AddBookToLibraryCommand request, CancellationToken cancellationToken)
+    public async Task<AddBookToLibraryResult> Handle(AddBookToLibraryCommand request, CancellationToken cancellationToken)
     {
         if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
             throw new UnauthorizedException();
@@ -139,6 +208,7 @@ public class AddBookToLibraryCommandHandler : IRequestHandler<AddBookToLibraryCo
 
         var userBook = await _context.UserBooks
             .FirstOrDefaultAsync(ub => ub.UserId == userId && ub.BookId == request.BookId, cancellationToken);
+        var created = userBook == null;
 
         if (userBook == null)
         {
@@ -167,7 +237,7 @@ public class AddBookToLibraryCommandHandler : IRequestHandler<AddBookToLibraryCo
             _context, userId, book, request.InitialStatus == UserBookStatus.Completed, cancellationToken);
 
         await _context.SaveChangesAsync(cancellationToken);
-        return userBook.Id;
+        return new AddBookToLibraryResult(userBook.Id, created);
     }
 }
 
@@ -295,7 +365,8 @@ public class FavoriteBookCommandHandler : IRequestHandler<FavoriteBookCommand, b
         var exists = await _context.FavoriteBooks
             .AnyAsync(f => f.UserId == userId && f.BookId == request.BookId, cancellationToken);
 
-        if (exists) return true;
+        // API-04: false means "already favorited" so the endpoint can answer 200 vs 201.
+        if (exists) return false;
 
         _context.FavoriteBooks.Add(new FavoriteBook(userId, request.BookId));
         await _context.SaveChangesAsync(cancellationToken);

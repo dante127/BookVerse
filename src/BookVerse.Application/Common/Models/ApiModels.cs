@@ -49,6 +49,16 @@ public class ApiResponse : ApiResponse<object>
         Message = message,
         Errors = errors ?? []
     };
+
+    // Hidden so ApiResponse.Fail never hands back a plain ApiResponse<object> through the
+    // derived type — both overloads behave the same on both classes (API-04).
+    public static new ApiResponse Fail(string message, string field, string error) => new()
+    {
+        Success = false,
+        Data = null,
+        Message = message,
+        Errors = [new ErrorDetail(field, error)]
+    };
 }
 
 public record ErrorDetail(string Field, string Message);

@@ -3,6 +3,7 @@ using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Models;
 using BookVerse.Domain.Entities.Reviews;
 using BookVerse.Domain.Enums;
+using BookVerse.Application.Common.Validation;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -243,6 +244,23 @@ public record ModerateReviewCommand(
     Guid ReviewId,
     ReviewStatus NewStatus,
     string? ModerationNote = null) : IRequest<bool>;
+
+public class ModerateReviewCommandValidator : AbstractValidator<ModerateReviewCommand>
+{
+    public ModerateReviewCommandValidator()
+    {
+        RuleFor(x => x.ReviewId).NotEmpty();
+        RuleFor(x => x.NewStatus)
+            .IsInEnum()
+            .Must(s => s != ReviewStatus.Pending)
+            .WithMessage("Pending is not a moderation outcome; use Published, Rejected, or Hidden.");
+        RuleFor(x => x.ModerationNote)
+            .NotEmpty()
+            .WithMessage("A moderation note is required when rejecting a review.")
+            .When(x => x.NewStatus == ReviewStatus.Rejected);
+        RuleFor(x => x.ModerationNote).MaximumLength(1000);
+    }
+}
 
 public class ModerateReviewCommandHandler : IRequestHandler<ModerateReviewCommand, bool>
 {

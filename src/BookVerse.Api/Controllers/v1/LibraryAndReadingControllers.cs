@@ -23,12 +23,29 @@ public class LibraryController : ApiControllerBase
         return Success(result);
     }
 
+    [HttpGet("books/{bookId:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<UserBookItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<UserBookItemDto>>> GetLibraryBook(Guid bookId)
+    {
+        var result = await Mediator.Send(new GetLibraryBookQuery(bookId));
+        return Success(result);
+    }
+
     [HttpPost("books")]
     [ProducesResponseType(typeof(ApiResponse<Guid>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ApiResponse<Guid>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<Guid>>> AddToLibrary([FromBody] AddBookToLibraryCommand command)
     {
-        var id = await Mediator.Send(command);
-        return CreatedSuccess($"/api/v1/library/books/{command.BookId}", id, "Book added to your library.");
+        var result = await Mediator.Send(command);
+
+        // API-04: re-adding an existing entry is an idempotent status update, not a creation.
+        if (!result.Created)
+        {
+            return Success(result.Id, "Book is already in your library; status updated.");
+        }
+
+        return CreatedSuccess($"/api/v1/library/books/{command.BookId}", result.Id, "Book added to your library.");
     }
 
     [HttpPut("books/{bookId:guid}")]
@@ -73,11 +90,19 @@ public class ReadingController : ApiControllerBase
     }
 
     [HttpPost("goals")]
+    [ProducesResponseType(typeof(ApiResponse<ReadingGoalDto>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ApiResponse<ReadingGoalDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<ReadingGoalDto>>> SetGoal([FromBody] SetReadingGoalCommand command)
     {
         var result = await Mediator.Send(command);
-        return Success(result, "Reading goal set successfully.");
+
+        // API-04: POST goals is an upsert — 201 only when the goal was created.
+        if (!result.Created)
+        {
+            return Success(result.Goal, "Reading goal updated.");
+        }
+
+        return CreatedSuccess("/api/v1/reading/goals", result.Goal, "Reading goal created.");
     }
 }
 

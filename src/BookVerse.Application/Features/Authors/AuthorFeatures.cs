@@ -2,6 +2,7 @@ using BookVerse.Application.Common.Exceptions;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Models;
 using BookVerse.Domain.Entities.Authors;
+using BookVerse.Application.Common.Validation;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -142,6 +143,10 @@ public class CreateAuthorCommandValidator : AbstractValidator<CreateAuthorComman
     public CreateAuthorCommandValidator()
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
+        RuleFor(x => x.Biography).MaximumLength(4000);
+        RuleFor(x => x.Country).MaximumLength(100);
+        RuleFor(x => x.WebsiteUrl).IsValidWebUrl().MaximumLength(2000);
+        RuleFor(x => x.ProfileImageUrl).IsValidWebUrl().MaximumLength(2000);
     }
 }
 

@@ -108,7 +108,8 @@ public class BooksController : ApiControllerBase
     {
         if (id != command.BookId) return BadRequest(ApiResponse.Fail("Route ID does not match command BookId."));
         var editionId = await Mediator.Send(command);
-        return CreatedSuccess($"/api/v1/books/{id}/editions/{editionId}", editionId, "Book edition added.");
+        // API-04: editions are retrievable through the book detail resource (no single-GET route).
+        return CreatedSuccess($"/api/v1/books/{id}", editionId, "Book edition added.");
     }
 
     // --- Reviews for Book ---
@@ -127,17 +128,22 @@ public class BooksController : ApiControllerBase
     {
         var command = new CreateReviewCommand(id, request.Rating, request.Title, request.Content);
         var result = await Mediator.Send(command);
-        return CreatedSuccess($"/api/v1/books/{id}/reviews/{result.Id}", result, "Review submitted successfully.");
+        // API-04: point at the retrievable reviews collection (no single-review GET exists).
+        return CreatedSuccess($"/api/v1/books/{id}/reviews", result, "Review submitted successfully.");
     }
 
     // --- Favorite Book ---
     [Authorize]
     [HttpPost("{id:guid}/favorite")]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse>> FavoriteBook(Guid id)
     {
-        await Mediator.Send(new FavoriteBookCommand(id));
-        return Success("Book added to favorites.");
+        var created = await Mediator.Send(new FavoriteBookCommand(id));
+
+        // API-04: favoriting is an idempotent set-state; only the first call creates.
+        if (!created) return Success("Book is already in your favorites.");
+        return Created($"/api/v1/books/{id}", ApiResponse.Ok("Book added to favorites."));
     }
 
     [Authorize]
@@ -145,8 +151,8 @@ public class BooksController : ApiControllerBase
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse>> UnfavoriteBook(Guid id)
     {
-        await Mediator.Send(new UnfavoriteBookCommand(id));
-        return Success("Book removed from favorites.");
+        var removed = await Mediator.Send(new UnfavoriteBookCommand(id));
+        return Success(removed ? "Book removed from favorites." : "Book was not in your favorites.");
     }
 
     // --- Reading Progress ---

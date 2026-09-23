@@ -3,6 +3,7 @@ using BookVerse.Application.Features.Auth;
 using BookVerse.Application.Features.Users;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace BookVerse.Api.Controllers.v1;
 
@@ -10,18 +11,22 @@ namespace BookVerse.Api.Controllers.v1;
 public class AuthController : ApiControllerBase
 {
     [HttpPost("register")]
+    [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(ApiResponse<AuthResponseDto>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<AuthResponseDto>>> Register([FromBody] RegisterCommand command)
     {
         var result = await Mediator.Send(command);
-        return CreatedSuccess($"/api/v1/users/{result.UserId}", result, "User registered successfully.");
+        return CreatedSuccess("/api/v1/users/me", result, "User registered successfully.");
     }
 
     [HttpPost("login")]
+    [EnableRateLimiting("login")]
     [ProducesResponseType(typeof(ApiResponse<AuthResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<ApiResponse<AuthResponseDto>>> Login([FromBody] LoginCommand command)
     {
         var result = await Mediator.Send(command);
@@ -29,6 +34,7 @@ public class AuthController : ApiControllerBase
     }
 
     [HttpPost("refresh")]
+    [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(ApiResponse<AuthResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<ApiResponse<AuthResponseDto>>> RefreshToken([FromBody] RefreshTokenCommand command)
@@ -39,6 +45,7 @@ public class AuthController : ApiControllerBase
 
     [Authorize]
     [HttpPost("revoke")]
+    [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse>> RevokeToken([FromBody] RevokeTokenCommand command)
     {

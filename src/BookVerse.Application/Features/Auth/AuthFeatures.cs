@@ -3,6 +3,7 @@ using BookVerse.Application.Common.Interfaces;
 using BookVerse.Domain.Entities.Identity;
 using BookVerse.Domain.Entities.Profiles;
 using BookVerse.Domain.Enums;
+using BookVerse.Application.Common.Validation;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -27,7 +28,13 @@ public class RegisterCommandValidator : AbstractValidator<RegisterCommand>
     public RegisterCommandValidator()
     {
         RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(256);
-        RuleFor(x => x.Password).NotEmpty().MinimumLength(8).WithMessage("Password must be at least 8 characters long.");
+        RuleFor(x => x.Password)
+            .NotEmpty()
+            .MinimumLength(10).WithMessage("Password must be at least 10 characters long.")
+            .Matches("[a-z]").WithMessage("Password must contain a lowercase letter.")
+            .Matches("[A-Z]").WithMessage("Password must contain an uppercase letter.")
+            .Matches("[0-9]").WithMessage("Password must contain a digit.")
+            .MaximumLength(128);
         RuleFor(x => x.DisplayName).NotEmpty().MaximumLength(100);
     }
 }
@@ -105,13 +112,24 @@ public class LoginCommandValidator : AbstractValidator<LoginCommand>
 {
     public LoginCommandValidator()
     {
-        RuleFor(x => x.Email).NotEmpty().EmailAddress();
-        RuleFor(x => x.Password).NotEmpty();
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(256);
+        RuleFor(x => x.Password).NotEmpty().MaximumLength(128);
     }
 }
 
 public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponseDto>
 {
+    // SEC-05: consecutive-failure lockout. The window is per account; per-IP abuse is
+    // handled by the API rate limiter.
+    public const int MaxFailedLoginAttempts = 5;
+    public static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
+
+    // SEC-07: unknown emails run the same password-verification cost as known ones,
+    // so response timing cannot enumerate accounts. Both constants must be valid
+    // Base64 (the hasher decodes them); the hash never matches any password.
+    private const string DummyHash = "IbRU1z4BzmONNYSFLe2R3SAY2zs4BNhs4XudxgKYsvQ=";
+    private const string DummySalt = "Ym9va3ZlcnNlLWR1bW15LXNhbHQtZm9yLXRpbWluZy1wYXJpdHk=";
+
     private readonly IApplicationDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITokenService _tokenService;
@@ -140,9 +158,29 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponseDto
             .ThenInclude(rp => rp.Permission)
             .FirstOrDefaultAsync(u => u.Email == normalizedEmail, cancellationToken);
 
-        if (user == null || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash, user.PasswordSalt))
+        var now = DateTimeOffset.UtcNow;
+
+        if (user == null)
         {
+            _passwordHasher.VerifyPassword(request.Password, DummyHash, DummySalt);
             throw new UnauthorizedException("Invalid email or password.");
+        }
+
+        if (user.IsLockedOut(now))
+        {
+            throw new ForbiddenException("Too many failed sign-in attempts. Try again later.");
+        }
+
+        if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash, user.PasswordSalt))
+        {
+            user.RegisterLoginFailure(MaxFailedLoginAttempts, LockoutDuration, now);
+            await _context.SaveChangesAsync(cancellationToken);
+            throw new UnauthorizedException("Invalid email or password.");
+        }
+
+        if (user.FailedLoginCount > 0 || user.LockoutUntil != null)
+        {
+            user.ResetLoginFailures();
         }
 
         if (user.Status != UserStatus.Active)
@@ -185,6 +223,14 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponseDto
 
 // --- Refresh Token (Rotation & Replay Detection) ---
 public record RefreshTokenCommand(string RefreshToken) : IRequest<AuthResponseDto>;
+
+public class RefreshTokenCommandValidator : AbstractValidator<RefreshTokenCommand>
+{
+    public RefreshTokenCommandValidator()
+    {
+        RuleFor(x => x.RefreshToken).NotEmpty().MaximumLength(512);
+    }
+}
 
 public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, AuthResponseDto>
 {
@@ -277,6 +323,14 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
 
 // --- Revoke Token ---
 public record RevokeTokenCommand(string RefreshToken) : IRequest<bool>;
+
+public class RevokeTokenCommandValidator : AbstractValidator<RevokeTokenCommand>
+{
+    public RevokeTokenCommandValidator()
+    {
+        RuleFor(x => x.RefreshToken).NotEmpty().MaximumLength(512);
+    }
+}
 
 public class RevokeTokenCommandHandler : IRequestHandler<RevokeTokenCommand, bool>
 {
