@@ -202,7 +202,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseSerilogRequestLogging();
-app.UseHttpsRedirection();
+
+// The container listens on plain HTTP (TLS terminates upstream, if at all). Redirecting
+// unconditionally produces a per-request "failed to determine https port" warning, so it
+// is opted into with ASPNETCORE_HTTPS_PORT once a TLS-terminating front is actually configured.
+if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_HTTPS_PORT")))
+{
+    app.UseHttpsRedirection();
+}
 
 if (!app.Environment.IsDevelopment())
 {
@@ -235,8 +242,26 @@ app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHealthChecks("/health");
-app.MapHealthChecks("/health/ready");
+
+// L-03: liveness and readiness are deliberately different. Liveness runs no dependency
+// checks (a transient DB blip must not get the pod restarted); readiness checks the
+// database. Both answer with the bare status word — no check names, no provider details.
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = WriteHealthStatusOnly
+});
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = registration => registration.Name == "database",
+    ResponseWriter = WriteHealthStatusOnly
+});
+
+static Task WriteHealthStatusOnly(HttpContext context, Microsoft.Extensions.Diagnostics.HealthChecks.HealthReport report)
+{
+    context.Response.ContentType = "text/plain";
+    return context.Response.WriteAsync(report.Status.ToString());
+}
 
 // Database migration and seeding.
 // In Production any failure is fatal; in Development the app may boot against an offline DB (logged as warning).

@@ -20,8 +20,10 @@ public class CorrelationIdMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        var correlationId = context.Request.Headers[CorrelationIdHeader].FirstOrDefault()
-            ?? Guid.NewGuid().ToString("N");
+        // L-02: a client-supplied id is only honored when it looks like one —
+        // bounded length and a safe alphabet — otherwise it is log/response forging.
+        var incoming = context.Request.Headers[CorrelationIdHeader].FirstOrDefault();
+        var correlationId = IsValidCorrelationId(incoming) ? incoming! : Guid.NewGuid().ToString("N");
 
         context.Response.Headers[CorrelationIdHeader] = correlationId;
 
@@ -30,6 +32,10 @@ public class CorrelationIdMiddleware
             await _next(context);
         }
     }
+
+    private static bool IsValidCorrelationId(string? value)
+        => value is { Length: >= 8 and <= 64 }
+           && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
 }
 
 public class ExceptionHandlingMiddleware

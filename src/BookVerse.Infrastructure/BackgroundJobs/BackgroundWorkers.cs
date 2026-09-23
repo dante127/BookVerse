@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Services;
+using BookVerse.Infrastructure.Observability;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -24,6 +26,7 @@ public class TrendingRecalculationWorker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            var startedAt = Stopwatch.GetTimestamp();
             try
             {
                 using var scope = _serviceProvider.CreateScope();
@@ -35,9 +38,11 @@ public class TrendingRecalculationWorker : BackgroundService
                 var trending = await recommendationService.GetTrendingBooksAsync(20, stoppingToken);
 
                 _logger.LogInformation("Successfully refreshed trending books cache ({Count} books).", trending.Count);
+                BookVerseMetrics.RecordWorkerIteration(nameof(TrendingRecalculationWorker), BookVerseMetrics.ElapsedMs(startedAt), success: true);
             }
             catch (Exception ex)
             {
+                BookVerseMetrics.RecordWorkerIteration(nameof(TrendingRecalculationWorker), BookVerseMetrics.ElapsedMs(startedAt), success: false);
                 _logger.LogError(ex, "Error occurred during trending books recalculation.");
             }
 
@@ -63,6 +68,7 @@ public class TokenCleanupWorker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            var startedAt = Stopwatch.GetTimestamp();
             try
             {
                 using var scope = _serviceProvider.CreateScope();
@@ -80,9 +86,12 @@ public class TokenCleanupWorker : BackgroundService
                     await context.SaveChangesAsync(stoppingToken);
                     _logger.LogInformation("Purged {Count} expired and obsolete refresh tokens.", expiredTokens.Count);
                 }
+
+                BookVerseMetrics.RecordWorkerIteration(nameof(TokenCleanupWorker), BookVerseMetrics.ElapsedMs(startedAt), success: true);
             }
             catch (Exception ex)
             {
+                BookVerseMetrics.RecordWorkerIteration(nameof(TokenCleanupWorker), BookVerseMetrics.ElapsedMs(startedAt), success: false);
                 _logger.LogError(ex, "Error occurred during refresh token cleanup.");
             }
 
@@ -111,6 +120,7 @@ public class AggregateReconciliationWorker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            var startedAt = Stopwatch.GetTimestamp();
             try
             {
                 using var scope = _serviceProvider.CreateScope();
@@ -169,9 +179,12 @@ public class AggregateReconciliationWorker : BackgroundService
                         await context.SaveChangesAsync(stoppingToken);
                     }
                 }
+
+                BookVerseMetrics.RecordWorkerIteration(nameof(AggregateReconciliationWorker), BookVerseMetrics.ElapsedMs(startedAt), success: true);
             }
             catch (Exception ex)
             {
+                BookVerseMetrics.RecordWorkerIteration(nameof(AggregateReconciliationWorker), BookVerseMetrics.ElapsedMs(startedAt), success: false);
                 _logger.LogError(ex, "Error occurred during aggregate rating reconciliation.");
             }
 

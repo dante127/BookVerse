@@ -1,14 +1,18 @@
 services:
   mssql:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    # Pinned to the 2022 GA Ubuntu tag; bump deliberately, never rely on :latest in a stack file.
+    image: mcr.microsoft.com/mssql/server:2022-GA-ubuntu-22.04
     container_name: bookverse-sqlserver
     restart: unless-stopped
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env (see .env.example)}
-      MSSQL_PID: "Developer"
-    ports:
-      - "1433:1433"
+      # MSSQL_PID is deliberately configurable: "Developer" is licensed for dev/test only.
+      # Production deployments MUST set a licensed edition (Standard/Enterprise) in .env.
+      MSSQL_PID: ${MSSQL_PID:-Developer}
+    # No host port published on purpose: only the api container needs the SQL network.
+    # For ad-hoc client access use `docker compose exec mssql sqlcmd ...` or add a
+    # loopback-bound port ("127.0.0.1:1433:1433") in a local override file.
     volumes:
       - mssql_data:/var/opt/mssql
     healthcheck:
@@ -21,16 +25,18 @@ services:
       - bookverse-network
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.2-alpine
     container_name: bookverse-redis
     restart: unless-stopped
-    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
-    ports:
-      - "6379:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    # Password resolved inside the container, so it never appears in `docker inspect` argv.
+    command: ["sh", "-c", "exec redis-server --save 60 1 --loglevel warning --requirepass \"$$REDIS_PASSWORD\""]
+    # No host port published: Redis is reachable only on the internal network.
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -45,12 +51,12 @@ services:
     container_name: bookverse-api
     restart: unless-stopped
     ports:
-      - "5000:8080"
+      - "5000:8080"   # host:5000 -> container:8080 (see docs/DEPLOYMENT.md)
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_HTTP_PORTS=8080
       - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=BookVerseDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;MultipleActiveResultSets=true;
-      - ConnectionStrings__Redis=redis:6379,abortConnect=false
+      - ConnectionStrings__Redis=redis:6379,password=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env},abortConnect=false
       - Jwt__Issuer=BookVerse
       - Jwt__Audience=BookVerseAudience
       - Jwt__Secret=${JWT_SECRET:?Set JWT_SECRET (>=32 bytes) in .env}

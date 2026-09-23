@@ -45,7 +45,7 @@
 | Layer | Project | Responsibilities | Dependencies |
 |---|---|---|---|
 | **Domain** | `BookVerse.Domain` | Enterprise entities, aggregate roots, value objects, domain events, domain exceptions, core business logic, and repository contracts. | None (Pure C# 13/14) |
-| **Application** | `BookVerse.Application` | CQRS Commands & Queries, MediatR Pipeline Behaviors, FluentValidation rules, Application DTOs, Event Handlers, Interfaces. | `BookVerse.Domain`, MediatR, FluentValidation, Mapster |
+| **Application** | `BookVerse.Application` | CQRS Commands & Queries, MediatR Pipeline Behaviors, FluentValidation rules, Application DTOs, Event Handlers, Interfaces. | `BookVerse.Domain`, MediatR, FluentValidation (mapping is hand-written via mappers such as `BookMapper` — no object-mapper library) |
 | **Infrastructure** | `BookVerse.Infrastructure` | EF Core 10 `ApplicationDbContext`, SQL Server entity configurations, Redis cache implementation, background jobs, JWT generator, full-text search engine. | `BookVerse.Application`, EF Core, StackExchange.Redis |
 | **Presentation** | `BookVerse.Api` | ASP.NET Core controllers, routing (`/api/v1/...`), authentication & authorization filters, OpenAPI / Swagger specs, Serilog configuration, health checks. | `BookVerse.Application`, `BookVerse.Infrastructure` |
 

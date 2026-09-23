@@ -19,13 +19,15 @@ In many book platforms, displaying average ratings and review counts requires sc
 ### The BookVerse Solution
 - The `Book` aggregate root stores denormalized `AverageRating`, `RatingsCount`, and `ReviewsCount` columns.
 - When a review is approved, updated, or removed, the aggregate recalculates its counters in-memory and saves with optimistic concurrency (`rowversion`).
-- A background reconciliation worker (`AggregateRecalculationBackgroundService`) runs off-peak to detect and heal any minor drift.
+- A background reconciliation worker (`AggregateReconciliationWorker`) runs periodically to detect and heal any minor drift.
 
 ---
 
 ## 3. Asynchronous Processing & Background Jobs
 
 Heavy operations are offloaded from HTTP request threads into .NET `BackgroundService` workers:
-- **`TrendingCalculationBackgroundService`:** Recalculates trending scores every 10 minutes and refreshes Redis caches.
-- **`RecommendationRefreshBackgroundService`:** Pre-computes candidate recommendations for active users.
-- **`TokenCleanupBackgroundService`:** Purges expired and revoked refresh tokens to keep the `RefreshTokens` table compact and index trees balanced.
+- **`TrendingRecalculationWorker`:** Recalculates trending scores every 10 minutes and refreshes Redis caches.
+- **`TokenCleanupWorker`:** Purges expired and revoked refresh tokens to keep the `RefreshTokens` table compact and index trees balanced.
+- **`AggregateReconciliationWorker`:** Heals rating aggregate drift on a scheduled pass.
+
+Each worker records iteration counts, error counts and duration through `BookVerseMetrics` (cache hit/miss, worker success/failure, iteration duration histograms), exposed for observability pipelines. Background workers are not registered in the `Testing` environment.

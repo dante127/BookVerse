@@ -23,6 +23,8 @@ BookVerse utilizes **Microsoft SQL Server 2022** as its primary relational datas
 | `PasswordHash` | `nvarchar(512)` | No | | Secure PBKDF2 hash |
 | `PasswordSalt` | `nvarchar(128)` | No | | Cryptographic salt |
 | `Status` | `int` | No | Index | `Active = 1`, `Inactive = 2`, `Suspended = 3` |
+| `FailedLoginCount` | `int` | No | Default `0` | Consecutive failed logins (resets on success) |
+| `LockoutUntil` | `datetimeoffset(7)` | Yes | | Account locked until this time (5 failures → 15 min) |
 | `CreatedAt` | `datetimeoffset(7)` | No | | Registration timestamp |
 | `UpdatedAt` | `datetimeoffset(7)` | Yes | | Last profile update |
 

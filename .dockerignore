@@ -1,0 +1,14 @@
+# Keep the Docker build context lean and secret-free.
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+.git/
+.github/
+.env
+.env.*
+!.env.example
+TestResults/
+docs/
+tests/
+*.md

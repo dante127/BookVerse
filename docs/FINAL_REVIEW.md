@@ -6,7 +6,7 @@
 
 * **Architecture Pattern:** Clean Architecture + Domain-Driven Design (DDD) + CQRS
 * **Total Solution Projects:** 7 (Domain, Application, Infrastructure, Api, UnitTests, IntegrationTests, ApiTests)
-* **Test Suite Health:** 45 / 45 Tests Passing (100% Pass Rate)
+* **Test Suite Health:** 154 / 154 Tests Passing (100% Pass Rate)
 * **Status:** Production-Ready Architecture & Scaffold
 
 ---
@@ -17,7 +17,7 @@
 * **Zero External Dependencies:** Verified. `BookVerse.Domain` references no third-party libraries, EF Core packages, or framework abstractions.
 * **Encapsulated Invariants:** Aggregates enforce business rules internally via private setters and factory methods (`Book.Create`, `Book.Publish`, `ReadingProgress.UpdateProgress`, `BookReview.Approve`, `BookReview.Reject`).
 * **Domain Events:** Implemented via `IDomainEvent` dispatched atomically during EF Core `SaveChangesAsync` interceptors.
-* **Value Objects & Primitives:** `Result<T>`, `Error`, `Entity<TId>`, `AggregateRoot<TId>`, and `AuditableEntity<TId>` provide a clean, cohesive foundation.
+* **Entity Primitives:** `Entity<TId>`, `AggregateRoot<TId>` (with in-memory domain event collection), and `AuditableEntity<TId>` provide a clean, cohesive foundation. Handlers signal failures via exceptions mapped to RFC 7807 problem details rather than `Result<T>` wrappers.
 
 ### 2.2 Application Layer (`BookVerse.Application`)
 * **CQRS Pattern:** Strict separation of Commands (state mutations) and Queries (read-only projections) orchestrated via MediatR handlers.

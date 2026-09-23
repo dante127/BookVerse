@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BookVerse.Application.Common.Interfaces;
+using BookVerse.Infrastructure.Observability;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
@@ -40,17 +41,28 @@ public class RedisCacheService : ICacheService
     public async Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         var db = GetDatabase();
-        if (db == null) return default;
+        if (db == null)
+        {
+            BookVerseMetrics.CacheUnavailable.Add(1);
+            return default;
+        }
 
         try
         {
             var value = await db.StringGetAsync(key);
-            if (value.IsNullOrEmpty) return default;
+            if (value.IsNullOrEmpty)
+            {
+                BookVerseMetrics.CacheMisses.Add(1);
+                return default;
+            }
 
-            return JsonSerializer.Deserialize<T>(value.ToString(), _jsonOptions);
+            var result = JsonSerializer.Deserialize<T>(value.ToString(), _jsonOptions);
+            BookVerseMetrics.CacheHits.Add(1);
+            return result;
         }
         catch (Exception ex)
         {
+            BookVerseMetrics.CacheFailures.Add(1);
             _logger.LogWarning(ex, "Redis error reading key {Key}. Falling back gracefully.", key);
             return default;
         }
