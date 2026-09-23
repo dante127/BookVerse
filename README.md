@@ -6,7 +6,7 @@
 [![SQL Server 2022](https://img.shields.io/badge/SQL%20Server-2022-CC292B?style=for-the-badge&logo=microsoft-sql-server&logoColor=white)](https://www.microsoft.com/sql-server)
 [![Redis 7](https://img.shields.io/badge/Redis-7.2-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
 [![Clean Architecture](https://img.shields.io/badge/Architecture-Clean%20%2F%20DDD%20%2F%20CQRS-blue?style=for-the-badge)](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
-[![Tests Passing](https://img.shields.io/badge/Tests-154%2F154%20Passed%20(100%25)-success?style=for-the-badge&logo=checkmarx&logoColor=white)](tests/)
+[![Tests Passing](https://img.shields.io/badge/Tests-157%2F157%20Passed%20(100%25)-success?style=for-the-badge&logo=checkmarx&logoColor=white)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 > **BookVerse** is a modern, production-grade enterprise backend platform for discovering, managing, reading, reviewing, and recommending books and novels. Designed and implemented from the ground up as a showcase of **Senior .NET Software Architecture**, this platform features **Clean Architecture**, **Domain-Driven Design (DDD)**, **CQRS with MediatR**, **EF Core 10**, **SQL Server Full-Text Search**, **Redis Caching with Resilient Fallback**, **Deterministic Multi-Signal Recommendation Engine**, **Optimistic Concurrency Control**, and **Automated Background Processing**.
@@ -106,7 +106,7 @@ BookVerse/
 ├── tests/
 │   ├── BookVerse.UnitTests/        # 83 Domain, Application & scoring-math unit tests (100% pass)
 │   ├── BookVerse.IntegrationTests/ # 7 EF Core, Concurrency & Cache integration tests (100% pass)
-│   └── BookVerse.ApiTests/         # 64 Full HTTP API integration tests (100% pass)
+│   └── BookVerse.ApiTests/         # 67 Full HTTP API integration tests (100% pass)
 ├── docs/                           # 12 Architecture & Engineering Documents
 │   ├── ARCHITECTURE.md             # System design & CQRS documentation
 │   ├── DATABASE.md                 # SQL schema, indexes, constraints, migrations
@@ -228,7 +228,7 @@ All responses follow a consistent, envelope structure:
 
 ## 🧪 Testing Suite & Verification
 
-The solution includes 154 comprehensive automated tests across three distinct test suites:
+The solution includes 157 comprehensive automated tests across three distinct test suites:
 
 ```bash
 # Execute entire test suite
@@ -241,12 +241,12 @@ dotnet test
 | :--- | :--- | :--- |
 | **`BookVerse.UnitTests`** | **83** | Domain entity invariant rules, aggregate state transitions, recommendation scoring golden tests against `RecommendationScoring`, metrics (`MeterListener`) counters, password hasher PBKDF2 cryptography, slug/auth-guard conventions. |
 | **`BookVerse.IntegrationTests`** | **7** | Real EF Core schema constraints, unique index enforcement, `RowVersion` optimistic concurrency conflicts, Redis cache fallback. |
-| **`BookVerse.ApiTests`** | **64** | End-to-end HTTP pipeline tests using `WebApplicationFactory`: taxonomy CRUD, review moderation flow, refresh-token rotation/replay, lockout & rate limiting, status-code semantics, correlation-id validation, health endpoints, security headers. |
-| **Total** | **154** | **100% Passed (0 Failures)** |
+| **`BookVerse.ApiTests`** | **67** | End-to-end HTTP pipeline tests using `WebApplicationFactory`: taxonomy CRUD, review moderation flow, refresh-token rotation/replay, lockout & rate limiting, forwarded-header client-IP resolution, OpenTelemetry metrics wiring, status-code semantics, correlation-id validation, health endpoints, security headers. |
+| **Total** | **157** | **100% Passed (0 Failures)** |
 
 ### CI & Database Provider Fidelity
 
-* **CI:** every push and pull request to `main` runs restore → Release build → the full 154-test suite with code coverage collection via [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+* **CI:** every push and pull request to `main` runs restore → Release build → the full 157-test suite with code coverage collection via [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 * **Provider fidelity (TST-02):** HTTP and integration tests run against **SQLite in-memory**, while production uses **SQL Server**. This is a deliberate, documented acceptance: SQL Server-only surface (full-text `CONTAINS`, `RowVersion` semantics, locked-resource behaviors) is validated by the IntegrationTests constraints and the compose smoke run. Testcontainers-based SQL Server API tests are deferred until container infrastructure is available in CI.
 
 * **Testing Architecture Guide:** [`docs/TESTING.md`](docs/TESTING.md)

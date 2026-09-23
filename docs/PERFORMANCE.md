@@ -30,4 +30,4 @@ Heavy operations are offloaded from HTTP request threads into .NET `BackgroundSe
 - **`TokenCleanupWorker`:** Purges expired and revoked refresh tokens to keep the `RefreshTokens` table compact and index trees balanced.
 - **`AggregateReconciliationWorker`:** Heals rating aggregate drift on a scheduled pass.
 
-Each worker records iteration counts, error counts and duration through `BookVerseMetrics` (cache hit/miss, worker success/failure, iteration duration histograms), exposed for observability pipelines. Background workers are not registered in the `Testing` environment.
+Each worker records iteration counts, error counts and duration through `BookVerseMetrics` (cache hit/miss, worker success/failure, iteration duration histograms). These instruments are registered as an OpenTelemetry `Meter` named `BookVerse`; `Program.cs` always attaches a metrics reader (plus runtime/HTTP/ASP.NET Core meters) and pushes to a collector over OTLP when `Otlp:Endpoint` or `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. Background workers are not registered in the `Testing` environment.

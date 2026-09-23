@@ -46,6 +46,7 @@ Moderation actions use `[Authorize(Roles = "Admin,Moderator")]`. Users also carr
    - `auth` policy (other auth endpoints): 30 requests / minute.
    - `login` policy (`/api/v1/auth/login`): 10 requests / minute.
    - Application-level account lockout tracked in the database (5 failed logins → 15-minute lockout) protects against credential stuffing independent of IP throttling.
+   - **Behind a reverse proxy** (Nginx, cloud LB, ingress) the socket peer is the proxy, so `UseForwardedHeaders` must resolve `X-Forwarded-For` or every caller collapses into a single proxy-IP partition and the per-IP limits become platform-global. Trusted proxies/networks are configured via `Forwarding:KnownProxies` / `Forwarding:KnownNetworks` (secure by default: unset headers are ignored and the socket IP is used).
 4. **CORS & Headers:**
    - Explicit allowed origins (no wildcard `*` with credentials).
    - Security headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.

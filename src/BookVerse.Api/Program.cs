@@ -1,13 +1,16 @@
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using BookVerse.Api.Middleware;
+using BookVerse.Api.Observability;
 using BookVerse.Application;
 using BookVerse.Application.Common.Models;
 using BookVerse.Infrastructure;
 using BookVerse.Infrastructure.Persistence;
 using BookVerse.Infrastructure.Persistence.Seeding;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -175,9 +178,48 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ApplicationDbContext>("database");
 
+// PROD-1: behind a reverse proxy (Nginx / cloud LB / ingress) the socket peer is the proxy,
+// not the caller. X-Forwarded-For must be resolved before anything reads Connection.RemoteIpAddress
+// (the per-IP rate limiters and the audit/stored client IP), otherwise every user collapses into a
+// single proxy partition and the login limiter becomes platform-global.
+// Secure by default: headers are only honored from explicitly configured proxies/networks.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+    foreach (var proxy in builder.Configuration.GetSection("Forwarding:KnownProxies").Get<string[]>() ?? [])
+    {
+        if (IPAddress.TryParse(proxy, out var addr))
+        {
+            options.KnownProxies.Add(addr);
+        }
+    }
+
+    foreach (var network in builder.Configuration.GetSection("Forwarding:KnownNetworks").Get<string[]>() ?? [])
+    {
+        var parts = network.Split('/');
+        if (parts.Length == 2 && IPAddress.TryParse(parts[0], out var baseAddr) && byte.TryParse(parts[1], out var prefixLength))
+        {
+            options.KnownIPNetworks.Add(new System.Net.IPNetwork(baseAddr, prefixLength));
+        }
+    }
+});
+
+// PROD-2: the BookVerse instruments need a reader/exporter or they never leave the process.
+// Collection (BookVerse meter + runtime/HTTP/ASP.NET Core) is always registered; OTLP export
+// is added only when a collector endpoint is configured (Otlp:Endpoint or the standard
+// OTEL_EXPORTER_OTLP_ENDPOINT env var). Skipped under the Testing environment.
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddBookVerseMetrics(builder.Configuration, MetricsSetup.IsOtlpEndpointConfigured(builder.Configuration));
+}
+
 var app = builder.Build();
 
 // Middlewares
+// Must run first so Connection.RemoteIpAddress reflects the original client for everything downstream.
+app.UseForwardedHeaders();
+
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 

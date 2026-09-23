@@ -64,6 +64,11 @@ services:
       - Jwt__RefreshTokenExpirationDays=7
       - Seed__AdminEmail=${SEED_ADMIN_EMAIL:-}
       - Seed__AdminPassword=${SEED_ADMIN_PASSWORD:-}
+      # PROD-1: trust X-Forwarded-For only from the reverse proxy's network (e.g. the Docker
+      # subnet nginx lives on, such as 172.16.0.0/12). Leave blank if the API is directly exposed.
+      - Forwarding__KnownNetworks__0=${TRUSTED_PROXY_NETWORK:-}
+      # PROD-2: metrics are always collected; OTLP export activates when a collector is set.
+      - Otlp__Endpoint=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       mssql:
         condition: service_healthy
