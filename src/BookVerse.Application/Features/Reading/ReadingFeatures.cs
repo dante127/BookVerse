@@ -1,6 +1,7 @@
 using BookVerse.Application.Common.Exceptions;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Models;
+using BookVerse.Application.Common.Services;
 using BookVerse.Domain.Entities.Reading;
 using BookVerse.Domain.Enums;
 using FluentValidation;
@@ -71,6 +72,7 @@ public class UpdateReadingProgressCommandHandler : IRequestHandler<UpdateReading
             .FirstOrDefaultAsync(rp => rp.UserId == userId && rp.BookId == request.BookId, cancellationToken);
 
         var previousPage = progress?.CurrentPage ?? 0;
+        var wasCompleted = progress?.CompletedAt != null;
 
         if (progress == null)
         {
@@ -79,14 +81,16 @@ public class UpdateReadingProgressCommandHandler : IRequestHandler<UpdateReading
         }
         else
         {
+            // BL-05: the book's live page count wins over the stored snapshot.
+            progress.ReconcileTotalPages(book.PageCount);
             progress.UpdateProgress(request.CurrentPage);
         }
+
+        var isCompleted = progress.CompletedAt != null;
 
         // Update UserBook status
         var userBook = await _context.UserBooks
             .FirstOrDefaultAsync(ub => ub.UserId == userId && ub.BookId == request.BookId, cancellationToken);
-
-        var isCompleted = request.CurrentPage >= book.PageCount;
 
         if (userBook == null)
         {
@@ -103,8 +107,9 @@ public class UpdateReadingProgressCommandHandler : IRequestHandler<UpdateReading
             {
                 userBook.TransitionStatus(UserBookStatus.Completed);
             }
-            else if (!isCompleted && userBook.Status == UserBookStatus.WantToRead)
+            else if (!isCompleted && userBook.Status is UserBookStatus.WantToRead or UserBookStatus.Completed)
             {
+                // BL-04: rewinding past the last page un-completes the book.
                 userBook.TransitionStatus(UserBookStatus.Reading);
             }
         }
@@ -117,15 +122,8 @@ public class UpdateReadingProgressCommandHandler : IRequestHandler<UpdateReading
         var history = ReadingHistory.Record(userId, request.BookId, historyAction, previousPage, request.CurrentPage);
         _context.ReadingHistories.Add(history);
 
-        // Update Reading Goal if completed
-        if (isCompleted && previousPage < book.PageCount)
-        {
-            var currentYear = DateTime.UtcNow.Year;
-            var goal = await _context.ReadingGoals
-                .FirstOrDefaultAsync(g => g.UserId == userId && g.Year == currentYear, cancellationToken);
-
-            goal?.IncrementCompleted();
-        }
+        // BL-04: goal moves exactly once per completion edge (increment or decrement).
+        await ReadingCompletion.ApplyGoalEdgeAsync(_context, userId, wasCompleted, isCompleted, cancellationToken);
 
         await _context.SaveChangesAsync(cancellationToken);
 

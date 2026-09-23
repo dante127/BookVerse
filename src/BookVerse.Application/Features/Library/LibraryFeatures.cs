@@ -1,6 +1,7 @@
 using BookVerse.Application.Common.Exceptions;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Models;
+using BookVerse.Application.Common.Services;
 using BookVerse.Domain.Entities.Library;
 using BookVerse.Domain.Entities.Reading;
 using BookVerse.Domain.Enums;
@@ -136,28 +137,34 @@ public class AddBookToLibraryCommandHandler : IRequestHandler<AddBookToLibraryCo
         var book = await _context.Books.FindAsync([request.BookId], cancellationToken);
         if (book == null) throw new NotFoundException("Book", request.BookId);
 
-        var existing = await _context.UserBooks
+        var userBook = await _context.UserBooks
             .FirstOrDefaultAsync(ub => ub.UserId == userId && ub.BookId == request.BookId, cancellationToken);
 
-        if (existing != null)
+        if (userBook == null)
         {
-            existing.TransitionStatus(request.InitialStatus);
-            await _context.SaveChangesAsync(cancellationToken);
-            return existing.Id;
+            userBook = UserBook.Create(userId, request.BookId, request.InitialStatus);
+            _context.UserBooks.Add(userBook);
+
+            // A fresh, not-yet-completed entry gets an empty progress record.
+            if (request.InitialStatus != UserBookStatus.Completed)
+            {
+                var progress = await _context.ReadingProgresses
+                    .FirstOrDefaultAsync(rp => rp.UserId == userId && rp.BookId == request.BookId, cancellationToken);
+
+                if (progress == null)
+                {
+                    _context.ReadingProgresses.Add(ReadingProgress.Create(userId, request.BookId, book.PageCount, 0));
+                }
+            }
+        }
+        else
+        {
+            userBook.TransitionStatus(request.InitialStatus);
         }
 
-        var userBook = UserBook.Create(userId, request.BookId, request.InitialStatus);
-        _context.UserBooks.Add(userBook);
-
-        // Ensure reading progress record exists
-        var progress = await _context.ReadingProgresses
-            .FirstOrDefaultAsync(rp => rp.UserId == userId && rp.BookId == request.BookId, cancellationToken);
-
-        if (progress == null)
-        {
-            var initialPage = request.InitialStatus == UserBookStatus.Completed ? book.PageCount : 0;
-            _context.ReadingProgresses.Add(ReadingProgress.Create(userId, request.BookId, book.PageCount, initialPage));
-        }
+        // BL-04: one owner syncs progress and the yearly goal with the new status.
+        await ReadingCompletion.SyncCompletionStatusAsync(
+            _context, userId, book, request.InitialStatus == UserBookStatus.Completed, cancellationToken);
 
         await _context.SaveChangesAsync(cancellationToken);
         return userBook.Id;
@@ -193,7 +200,15 @@ public class UpdateUserBookStatusCommandHandler : IRequestHandler<UpdateUserBook
             throw new NotFoundException($"Book '{request.BookId}' is not in user's library.");
         }
 
+        var book = await _context.Books.FindAsync([request.BookId], cancellationToken);
+        if (book == null) throw new NotFoundException("Book", request.BookId);
+
         userBook.TransitionStatus(request.NewStatus);
+
+        // BL-04: status changes now keep progress and the yearly goal in sync.
+        await ReadingCompletion.SyncCompletionStatusAsync(
+            _context, userId, book, request.NewStatus == UserBookStatus.Completed, cancellationToken);
+
         await _context.SaveChangesAsync(cancellationToken);
 
         return true;
@@ -226,7 +241,30 @@ public class RemoveBookFromLibraryCommandHandler : IRequestHandler<RemoveBookFro
 
         if (userBook == null) return false;
 
+        // BL-04: removing a completed book frees its slot in the yearly goal.
+        if (userBook.Status == UserBookStatus.Completed)
+        {
+            await ReadingCompletion.ApplyGoalEdgeAsync(_context, userId, wasCompleted: true, isCompleted: false, cancellationToken);
+        }
+
+        // BL-07: delete the per-user book rows so nothing is orphaned.
         _context.UserBooks.Remove(userBook);
+
+        var favorites = await _context.FavoriteBooks
+            .Where(f => f.UserId == userId && f.BookId == request.BookId)
+            .ToListAsync(cancellationToken);
+        _context.FavoriteBooks.RemoveRange(favorites);
+
+        var progresses = await _context.ReadingProgresses
+            .Where(rp => rp.UserId == userId && rp.BookId == request.BookId)
+            .ToListAsync(cancellationToken);
+        _context.ReadingProgresses.RemoveRange(progresses);
+
+        var histories = await _context.ReadingHistories
+            .Where(rh => rh.UserId == userId && rh.BookId == request.BookId)
+            .ToListAsync(cancellationToken);
+        _context.ReadingHistories.RemoveRange(histories);
+
         await _context.SaveChangesAsync(cancellationToken);
 
         return true;

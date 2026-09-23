@@ -80,4 +80,80 @@ public class ReadingProgressTests
         // Assert
         act.Should().Throw<ReadingDomainException>();
     }
+
+    [Fact]
+    public void MarkFinished_SecondCall_ShouldNotRaiseSecondEventOrChangeTimestamp()
+    {
+        var progress = ReadingProgress.Create(Guid.NewGuid(), Guid.NewGuid(), 300, 100);
+
+        progress.MarkFinished().Should().BeTrue();
+        var firstCompletedAt = progress.CompletedAt;
+        progress.MarkFinished().Should().BeFalse();
+
+        progress.CompletedAt.Should().Be(firstCompletedAt);
+        progress.DomainEvents.Should().ContainSingle(e => e is BookCompletedEvent);
+    }
+
+    [Fact]
+    public void MarkUnfinished_OnCompletedProgress_ShouldClearCompletionAndSignalEdge()
+    {
+        var progress = ReadingProgress.Create(Guid.NewGuid(), Guid.NewGuid(), 300, 300);
+        progress.ClearDomainEvents();
+
+        progress.MarkUnfinished().Should().BeTrue();
+        progress.CompletedAt.Should().BeNull();
+
+        // Second call is not an edge anymore.
+        progress.MarkUnfinished().Should().BeFalse();
+    }
+
+    [Fact]
+    public void UpdateProgress_RewindingPastLastPage_ShouldClearCompletionButKeepSingleCompletedEvent()
+    {
+        var progress = ReadingProgress.Create(Guid.NewGuid(), Guid.NewGuid(), 400, 400);
+
+        progress.UpdateProgress(350);
+
+        progress.CompletedAt.Should().BeNull();
+        progress.DomainEvents.Should().ContainSingle(e => e is BookCompletedEvent);
+    }
+
+    [Fact]
+    public void ReconcileTotalPages_GrowingPageCount_ShouldClampPercentageAndUncomplete()
+    {
+        var progress = ReadingProgress.Create(Guid.NewGuid(), Guid.NewGuid(), 400, 400);
+
+        progress.ReconcileTotalPages(500);
+
+        progress.TotalPages.Should().Be(500);
+        progress.CurrentPage.Should().Be(400);
+        progress.Percentage.Should().Be(80.00m);
+        progress.CompletedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public void ReconcileTotalPages_ShrinkingPageCount_ShouldClampPageAndComplete()
+    {
+        var progress = ReadingProgress.Create(Guid.NewGuid(), Guid.NewGuid(), 500, 450);
+        progress.ClearDomainEvents();
+
+        progress.ReconcileTotalPages(400);
+
+        progress.CurrentPage.Should().Be(400);
+        progress.Percentage.Should().Be(100.00m);
+        progress.CompletedAt.Should().NotBeNull();
+        progress.DomainEvents.Should().ContainSingle(e => e is BookCompletedEvent);
+    }
+
+    [Fact]
+    public void ReconcileTotalPages_WhenUnchanged_ShouldBeNoOp()
+    {
+        var progress = ReadingProgress.Create(Guid.NewGuid(), Guid.NewGuid(), 300, 150);
+
+        progress.ReconcileTotalPages(300);
+
+        progress.Percentage.Should().Be(50.00m);
+        progress.CompletedAt.Should().BeNull();
+        progress.DomainEvents.Should().BeEmpty();
+    }
 }

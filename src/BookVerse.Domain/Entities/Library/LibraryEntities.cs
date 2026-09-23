@@ -61,6 +61,7 @@ public class UserBook : Entity<Guid>
             case UserBookStatus.Reading:
                 StartedAt ??= now;
                 LastReadAt = now;
+                CompletedAt = null;
                 break;
             case UserBookStatus.Completed:
                 StartedAt ??= now;
@@ -70,6 +71,10 @@ public class UserBook : Entity<Guid>
             case UserBookStatus.Paused:
             case UserBookStatus.Dropped:
                 LastReadAt = now;
+                CompletedAt = null;
+                break;
+            case UserBookStatus.WantToRead:
+                CompletedAt = null;
                 break;
         }
     }

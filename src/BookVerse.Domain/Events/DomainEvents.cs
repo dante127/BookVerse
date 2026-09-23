@@ -31,17 +31,3 @@ public record BookCompletedEvent(
     Guid UserId,
     Guid BookId,
     DateTimeOffset CompletedAt) : IDomainEvent;
-
-public record ReadingGoalCompletedEvent(
-    Guid UserId,
-    int Year,
-    int TargetBooks) : IDomainEvent;
-
-public record AuthorFollowedEvent(
-    Guid UserId,
-    Guid AuthorId) : IDomainEvent;
-
-public record UserRatedBookEvent(
-    Guid UserId,
-    Guid BookId,
-    int Rating) : IDomainEvent;

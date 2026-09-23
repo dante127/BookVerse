@@ -1,6 +1,6 @@
 namespace BookVerse.Domain.Common;
 
-public interface IDomainEvent
+public interface IDomainEvent : MediatR.INotification
 {
     Guid EventId => Guid.NewGuid();
     DateTimeOffset OccurredOn => DateTimeOffset.UtcNow;

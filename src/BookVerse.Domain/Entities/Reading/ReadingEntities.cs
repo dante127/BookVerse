@@ -60,21 +60,64 @@ public class ReadingProgress : AggregateRoot<Guid>
         if (newPage < 0 || newPage > TotalPages)
             throw new ReadingDomainException($"Current page must be between 0 and {TotalPages}.");
 
-        var previousPage = CurrentPage;
         CurrentPage = newPage;
-        Percentage = Math.Round(((decimal)newPage / TotalPages) * 100, 2);
+        Percentage = PercentageOf(newPage, TotalPages);
         LastReadAt = DateTimeOffset.UtcNow;
 
-        if (newPage == TotalPages && CompletedAt == null)
-        {
-            CompletedAt = DateTimeOffset.UtcNow;
-            AddDomainEvent(new BookCompletedEvent(UserId, BookId, CompletedAt.Value));
-        }
-        else if (newPage < TotalPages)
-        {
-            CompletedAt = null;
-        }
+        if (newPage == TotalPages)
+            MarkFinished();
+        else
+            MarkUnfinished();
     }
+
+    /// <summary>
+    /// Re-syncs the snapshot page count with the book's live PageCount (e.g. after an
+    /// edition correction), clamps the current page, and re-derives completion status.
+    /// </summary>
+    public void ReconcileTotalPages(int totalPages)
+    {
+        if (totalPages <= 0)
+            throw new ReadingDomainException("Total pages must be greater than zero.");
+
+        if (TotalPages == totalPages) return;
+
+        TotalPages = totalPages;
+        if (CurrentPage > totalPages) CurrentPage = totalPages;
+        Percentage = PercentageOf(CurrentPage, totalPages);
+        LastReadAt = DateTimeOffset.UtcNow;
+
+        if (CurrentPage == totalPages)
+            MarkFinished();
+        else
+            MarkUnfinished();
+    }
+
+    /// <summary>
+    /// Marks the book finished. Returns true only on the not-completed -&gt; completed edge,
+    /// so callers can react exactly once (idempotent).
+    /// </summary>
+    public bool MarkFinished()
+    {
+        if (CompletedAt != null) return false;
+
+        CompletedAt = DateTimeOffset.UtcNow;
+        AddDomainEvent(new BookCompletedEvent(UserId, BookId, CompletedAt.Value));
+        return true;
+    }
+
+    /// <summary>
+    /// Clears the completion marker. Returns true only on the completed -&gt; not-completed edge.
+    /// </summary>
+    public bool MarkUnfinished()
+    {
+        if (CompletedAt == null) return false;
+
+        CompletedAt = null;
+        return true;
+    }
+
+    private static decimal PercentageOf(int currentPage, int totalPages)
+        => Math.Round(((decimal)currentPage / totalPages) * 100, 2);
 }
 
 public class ReadingHistory : Entity<Guid>
