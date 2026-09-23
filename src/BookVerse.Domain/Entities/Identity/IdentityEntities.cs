@@ -61,19 +61,6 @@ public class User : AuditableEntity<Guid>
         LockoutUntil = null;
     }
 
-    public void UpdatePassword(string newHash, string newSalt)
-    {
-        PasswordHash = newHash;
-        PasswordSalt = newSalt;
-        UpdatedAt = DateTimeOffset.UtcNow;
-    }
-
-    public void UpdateStatus(UserStatus status)
-    {
-        Status = status;
-        UpdatedAt = DateTimeOffset.UtcNow;
-    }
-
     public void AddRole(Role role)
     {
         if (_userRoles.Any(ur => ur.RoleId == role.Id)) return;

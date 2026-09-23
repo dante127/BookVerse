@@ -1,4 +1,6 @@
 using BookVerse.Application.Common.Exceptions;
+using BookVerse.Application.Common.Services;
+using BookVerse.Application.Common.Extensions;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Validation;
 using FluentValidation;
@@ -34,12 +36,7 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
 
     public async Task<UserProfileDto> Handle(GetCurrentUserQuery request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-        {
-            throw new UnauthorizedException("User is not authenticated.");
-        }
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var user = await _context.Users
             .AsNoTracking()
@@ -110,10 +107,7 @@ public class UpdateUserProfileCommandHandler : IRequestHandler<UpdateUserProfile
 
     public async Task<UserProfileDto> Handle(UpdateUserProfileCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
         var profile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
 
         if (profile == null)
@@ -171,10 +165,7 @@ public class UpdateReadingPreferencesCommandHandler : IRequestHandler<UpdateRead
 
     public async Task<bool> Handle(UpdateReadingPreferencesCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
         var profile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
 
         if (profile == null)
@@ -187,7 +178,7 @@ public class UpdateReadingPreferencesCommandHandler : IRequestHandler<UpdateRead
         await _context.SaveChangesAsync(cancellationToken);
 
         // Invalidate user recommendations cache
-        await _cacheService.RemoveAsync($"recs:user:{userId}", cancellationToken);
+        await _cacheService.RemoveAsync(CacheKeys.UserRecommendations(userId), cancellationToken);
 
         return true;
     }

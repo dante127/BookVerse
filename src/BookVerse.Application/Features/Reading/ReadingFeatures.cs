@@ -1,4 +1,5 @@
 using BookVerse.Application.Common.Exceptions;
+using BookVerse.Application.Common.Extensions;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Models;
 using BookVerse.Application.Common.Services;
@@ -61,10 +62,7 @@ public class UpdateReadingProgressCommandHandler : IRequestHandler<UpdateReading
 
     public async Task<ReadingProgressResultDto> Handle(UpdateReadingProgressCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var book = await _context.Books.FindAsync([request.BookId], cancellationToken);
         if (book == null) throw new NotFoundException("Book", request.BookId);
@@ -154,10 +152,7 @@ public class GetReadingHistoryQueryHandler : IRequestHandler<GetReadingHistoryQu
 
     public async Task<PagedResult<ReadingHistoryItemDto>> Handle(GetReadingHistoryQuery request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
         var (page, pageSize) = Pagination.Normalize(request.Page, request.PageSize);
 
         var query = _context.ReadingHistories
@@ -202,10 +197,7 @@ public class GetReadingGoalsQueryHandler : IRequestHandler<GetReadingGoalsQuery,
 
     public async Task<IReadOnlyList<ReadingGoalDto>> Handle(GetReadingGoalsQuery request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         return await _context.ReadingGoals
             .AsNoTracking()
@@ -248,10 +240,7 @@ public class SetReadingGoalCommandHandler : IRequestHandler<SetReadingGoalComman
 
     public async Task<SetReadingGoalResult> Handle(SetReadingGoalCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var goal = await _context.ReadingGoals
             .FirstOrDefaultAsync(g => g.UserId == userId && g.Year == request.Year, cancellationToken);

@@ -1,4 +1,5 @@
 using BookVerse.Application.Common.Exceptions;
+using BookVerse.Application.Common.Services;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Domain.Entities.Genres;
 using FluentValidation;
@@ -31,7 +32,7 @@ public class GetGenresQueryHandler : IRequestHandler<GetGenresQuery, IReadOnlyLi
 
     public async Task<IReadOnlyList<GenreItemDto>> Handle(GetGenresQuery request, CancellationToken cancellationToken)
     {
-        const string cacheKey = "genres:taxonomy";
+        const string cacheKey = CacheKeys.GenresTaxonomy;
         var cached = await _cacheService.GetAsync<List<GenreItemDto>>(cacheKey, cancellationToken);
         if (cached != null) return cached;
 
@@ -54,7 +55,7 @@ public class GetGenresQueryHandler : IRequestHandler<GetGenresQuery, IReadOnlyLi
 
         var tree = BuildTree(null);
 
-        await _cacheService.SetAsync(cacheKey, tree, TimeSpan.FromHours(1), cancellationToken);
+        await _cacheService.SetAsync(cacheKey, tree, CacheTtls.GenresTaxonomy, cancellationToken);
 
         return tree;
     }
@@ -87,7 +88,7 @@ public class CreateGenreCommandHandler : IRequestHandler<CreateGenreCommand, Gui
 
     public async Task<Guid> Handle(CreateGenreCommand request, CancellationToken cancellationToken)
     {
-        var slug = request.Name.Trim().ToLowerInvariant().Replace(' ', '-');
+        var slug = Slug.Slugify(request.Name);
 
         if (await _context.Genres.AnyAsync(g => g.Slug == slug, cancellationToken))
         {
@@ -104,7 +105,7 @@ public class CreateGenreCommandHandler : IRequestHandler<CreateGenreCommand, Gui
         _context.Genres.Add(genre);
 
         await _context.SaveChangesAsync(cancellationToken);
-        await _cacheService.RemoveAsync("genres:taxonomy", cancellationToken);
+        await _cacheService.RemoveAsync(CacheKeys.GenresTaxonomy, cancellationToken);
 
         return genre.Id;
     }

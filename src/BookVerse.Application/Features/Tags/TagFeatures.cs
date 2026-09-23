@@ -1,4 +1,5 @@
 using BookVerse.Application.Common.Exceptions;
+using BookVerse.Application.Common.Services;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Domain.Entities.Tags;
 using FluentValidation;
@@ -51,7 +52,7 @@ public class CreateTagCommandHandler : IRequestHandler<CreateTagCommand, Guid>
 
     public async Task<Guid> Handle(CreateTagCommand request, CancellationToken cancellationToken)
     {
-        var slug = request.Name.Trim().ToLowerInvariant().Replace(' ', '-');
+        var slug = Slug.Slugify(request.Name);
 
         var existing = await _context.Tags.FirstOrDefaultAsync(t => t.Slug == slug, cancellationToken);
         if (existing != null) return existing.Id;

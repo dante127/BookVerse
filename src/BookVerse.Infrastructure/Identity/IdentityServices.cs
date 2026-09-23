@@ -148,13 +148,6 @@ public class CurrentUserService : ICurrentUserService
     public string? IpAddress =>
         _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
 
-    public bool HasPermission(string permission)
-    {
-        return _httpContextAccessor.HttpContext?.User
-            .FindAll("permission")
-            .Any(c => c.Value == permission) ?? false;
-    }
-
     public bool IsInRole(string role)
     {
         return _httpContextAccessor.HttpContext?.User.IsInRole(role) ?? false;

@@ -9,7 +9,7 @@
   <ItemGroup>
     <!-- MediatR.Contracts is dependency-free abstractions; it lets IDomainEvent be
          published through the mediator by the SaveChanges dispatcher. -->
-    <PackageReference Include="MediatR.Contracts" Version="2.0.1" />
+    <PackageReference Include="MediatR.Contracts" />
   </ItemGroup>
 
 </Project>

@@ -39,18 +39,6 @@ public class Author : AuditableEntity<Guid>
         };
     }
 
-    public void Update(string name, string slug, string? biography, DateOnly? birthDate, string? country, string? websiteUrl, string? profileImageUrl)
-    {
-        Name = name.Trim();
-        Slug = slug.Trim().ToLowerInvariant();
-        Biography = biography?.Trim();
-        BirthDate = birthDate;
-        Country = country?.Trim();
-        WebsiteUrl = websiteUrl?.Trim();
-        ProfileImageUrl = profileImageUrl?.Trim();
-        UpdatedAt = DateTimeOffset.UtcNow;
-    }
-
     public void IncrementFollowers() => FollowersCount++;
     public void DecrementFollowers() { if (FollowersCount > 0) FollowersCount--; }
 }

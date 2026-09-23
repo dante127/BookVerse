@@ -123,10 +123,4 @@ public class BookReview : AggregateRoot<Guid>
         ModeratedAt = DateTimeOffset.UtcNow;
         UpdatedAt = DateTimeOffset.UtcNow;
     }
-
-    public void Restore()
-    {
-        Status = ReviewStatus.Published;
-        UpdatedAt = DateTimeOffset.UtcNow;
-    }
 }

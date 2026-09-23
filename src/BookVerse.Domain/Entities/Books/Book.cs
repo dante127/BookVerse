@@ -118,12 +118,6 @@ public class Book : AuditableEntity<Guid>
         AddDomainEvent(new BookPublishedEvent(Id, Title, authorIds, primaryGenre));
     }
 
-    public void Archive()
-    {
-        Status = BookStatus.Archived;
-        UpdatedAt = DateTimeOffset.UtcNow;
-    }
-
     public void AddAuthor(Author author, AuthorRole role, int orderIndex = 0)
     {
         if (_authors.Any(a => a.AuthorId == author.Id && a.Role == role)) return;

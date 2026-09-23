@@ -1,4 +1,5 @@
 using BookVerse.Application.Common.Exceptions;
+using BookVerse.Application.Common.Extensions;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Models;
 using BookVerse.Domain.Enums;
@@ -33,10 +34,7 @@ public class GetNotificationsQueryHandler : IRequestHandler<GetNotificationsQuer
 
     public async Task<IReadOnlyList<NotificationDto>> Handle(GetNotificationsQuery request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
         var limit = Pagination.NormalizeLimit(request.Limit, defaultLimit: 50);
 
         var query = _context.Notifications
@@ -80,10 +78,7 @@ public class MarkNotificationAsReadCommandHandler : IRequestHandler<MarkNotifica
 
     public async Task<bool> Handle(MarkNotificationAsReadCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var notification = await _context.Notifications
             .FirstOrDefaultAsync(n => n.Id == request.NotificationId && n.UserId == userId, cancellationToken);
@@ -113,10 +108,7 @@ public class MarkAllNotificationsAsReadCommandHandler : IRequestHandler<MarkAllN
 
     public async Task<int> Handle(MarkAllNotificationsAsReadCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var unread = await _context.Notifications
             .Where(n => n.UserId == userId && !n.IsRead)

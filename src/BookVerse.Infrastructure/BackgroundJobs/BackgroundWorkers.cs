@@ -1,4 +1,5 @@
 using BookVerse.Application.Common.Interfaces;
+using BookVerse.Application.Common.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -30,7 +31,7 @@ public class TrendingRecalculationWorker : BackgroundService
                 var cacheService = scope.ServiceProvider.GetRequiredService<ICacheService>();
 
                 // Invalidate existing trending cache and compute fresh scores
-                await cacheService.RemoveAsync("books:trending", stoppingToken);
+                await cacheService.RemoveAsync(CacheKeys.TrendingBooks, stoppingToken);
                 var trending = await recommendationService.GetTrendingBooksAsync(20, stoppingToken);
 
                 _logger.LogInformation("Successfully refreshed trending books cache ({Count} books).", trending.Count);

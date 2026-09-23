@@ -31,13 +31,4 @@ public class Genre : AuditableEntity<Guid>
             CreatedAt = DateTimeOffset.UtcNow
         };
     }
-
-    public void Update(string name, string slug, string? description, Guid? parentGenreId)
-    {
-        Name = name.Trim();
-        Slug = slug.Trim().ToLowerInvariant();
-        Description = description?.Trim();
-        ParentGenreId = parentGenreId;
-        UpdatedAt = DateTimeOffset.UtcNow;
-    }
 }

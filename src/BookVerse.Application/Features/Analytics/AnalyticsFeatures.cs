@@ -1,4 +1,6 @@
 using BookVerse.Application.Common.Exceptions;
+using BookVerse.Application.Common.Services;
+using BookVerse.Application.Common.Extensions;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Domain.Enums;
 using MediatR;
@@ -47,10 +49,7 @@ public class GetUserReadingAnalyticsQueryHandler : IRequestHandler<GetUserReadin
 
     public async Task<UserReadingAnalyticsDto> Handle(GetUserReadingAnalyticsQuery request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var userBooks = await _context.UserBooks
             .AsNoTracking()
@@ -168,7 +167,7 @@ public class GetAdminAnalyticsQueryHandler : IRequestHandler<GetAdminAnalyticsQu
 
     public async Task<AdminAnalyticsDto> Handle(GetAdminAnalyticsQuery request, CancellationToken cancellationToken)
     {
-        const string cacheKey = "analytics:admin:dashboard";
+        const string cacheKey = CacheKeys.AdminDashboard;
         var cached = await _cacheService.GetAsync<AdminAnalyticsDto>(cacheKey, cancellationToken);
         if (cached != null) return cached;
 
@@ -205,7 +204,7 @@ public class GetAdminAnalyticsQueryHandler : IRequestHandler<GetAdminAnalyticsQu
             (int)Math.Min(int.MaxValue, totalPages),
             topGenres);
 
-        await _cacheService.SetAsync(cacheKey, dto, TimeSpan.FromMinutes(10), cancellationToken);
+        await _cacheService.SetAsync(cacheKey, dto, CacheTtls.AdminDashboard, cancellationToken);
 
         return dto;
     }

@@ -1,4 +1,6 @@
 using BookVerse.Application.Common.Exceptions;
+using BookVerse.Application.Common.Services;
+using BookVerse.Application.Common.Extensions;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Models;
 using BookVerse.Domain.Entities.Reviews;
@@ -125,10 +127,7 @@ public class CreateReviewCommandHandler : IRequestHandler<CreateReviewCommand, B
 
     public async Task<BookReviewDto> Handle(CreateReviewCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
         var isStaff = _currentUserService.IsInRole("Admin") || _currentUserService.IsInRole("Moderator");
 
         var book = await _context.Books.FindAsync([request.BookId], cancellationToken);
@@ -220,8 +219,8 @@ public class CreateReviewCommandHandler : IRequestHandler<CreateReviewCommand, B
         await _context.SaveChangesAsync(cancellationToken);
 
         // Invalidate cache
-        await _cacheService.RemoveAsync($"books:details:{request.BookId}", cancellationToken);
-        await _cacheService.RemoveAsync("books:trending", cancellationToken);
+        await _cacheService.RemoveAsync(CacheKeys.BookDetails(request.BookId), cancellationToken);
+        await _cacheService.RemoveAsync(CacheKeys.TrendingBooks, cancellationToken);
 
         var profile = await _context.UserProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
 
@@ -280,10 +279,7 @@ public class ModerateReviewCommandHandler : IRequestHandler<ModerateReviewComman
 
     public async Task<bool> Handle(ModerateReviewCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var moderatorId = _currentUserService.UserId.Value;
+        var moderatorId = _currentUserService.RequireUserId();
 
         var review = await _context.BookReviews
             .Include(r => r.Book)
@@ -334,8 +330,8 @@ public class ModerateReviewCommandHandler : IRequestHandler<ModerateReviewComman
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        await _cacheService.RemoveAsync($"books:details:{review.BookId}", cancellationToken);
-        await _cacheService.RemoveAsync("books:trending", cancellationToken);
+        await _cacheService.RemoveAsync(CacheKeys.BookDetails(review.BookId), cancellationToken);
+        await _cacheService.RemoveAsync(CacheKeys.TrendingBooks, cancellationToken);
 
         return true;
     }

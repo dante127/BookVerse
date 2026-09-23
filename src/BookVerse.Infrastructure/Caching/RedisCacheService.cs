@@ -93,27 +93,4 @@ public class RedisCacheService : ICacheService
             _logger.LogWarning(ex, "Redis error deleting key {Key}.", key);
         }
     }
-
-    public async Task RemoveByPatternAsync(string pattern, CancellationToken cancellationToken = default)
-    {
-        if (_redis == null || !_redis.IsConnected) return;
-
-        try
-        {
-            foreach (var endpoint in _redis.GetEndPoints())
-            {
-                var server = _redis.GetServer(endpoint);
-                var keys = server.Keys(pattern: pattern).ToArray();
-                if (keys.Length > 0)
-                {
-                    var db = _redis.GetDatabase();
-                    await db.KeyDeleteAsync(keys);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Redis error deleting keys with pattern {Pattern}.", pattern);
-        }
-    }
 }

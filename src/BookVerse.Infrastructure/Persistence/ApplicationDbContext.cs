@@ -85,9 +85,3 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         }
     }
 }
-
-public class SqliteRowVersionGenerator : Microsoft.EntityFrameworkCore.ValueGeneration.ValueGenerator<byte[]>
-{
-    public override bool GeneratesTemporaryValues => false;
-    public override byte[] Next(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry) => Guid.NewGuid().ToByteArray();
-}

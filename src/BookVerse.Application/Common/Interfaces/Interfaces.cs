@@ -53,7 +53,6 @@ public interface ICacheService
     Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
     Task SetAsync<T>(string key, T value, TimeSpan? expiration = null, CancellationToken cancellationToken = default);
     Task RemoveAsync(string key, CancellationToken cancellationToken = default);
-    Task RemoveByPatternAsync(string pattern, CancellationToken cancellationToken = default);
 }
 
 public interface ICurrentUserService
@@ -62,7 +61,6 @@ public interface ICurrentUserService
     string? Email { get; }
     bool IsAuthenticated { get; }
     string? IpAddress { get; }
-    bool HasPermission(string permission);
     bool IsInRole(string role);
 }
 

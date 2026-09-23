@@ -1,4 +1,5 @@
 using BookVerse.Application.Common.Exceptions;
+using BookVerse.Application.Common.Extensions;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Models;
 using BookVerse.Application.Common.Services;
@@ -44,10 +45,7 @@ public class GetUserLibraryQueryHandler : IRequestHandler<GetUserLibraryQuery, P
 
     public async Task<PagedResult<UserBookItemDto>> Handle(GetUserLibraryQuery request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
         var (page, pageSize) = Pagination.Normalize(request.Page, request.PageSize);
 
         var query = _context.UserBooks
@@ -129,10 +127,7 @@ public class GetLibraryBookQueryHandler : IRequestHandler<GetLibraryBookQuery, U
 
     public async Task<UserBookItemDto> Handle(GetLibraryBookQuery request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var item = await _context.UserBooks
             .AsNoTracking()
@@ -198,10 +193,7 @@ public class AddBookToLibraryCommandHandler : IRequestHandler<AddBookToLibraryCo
 
     public async Task<AddBookToLibraryResult> Handle(AddBookToLibraryCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var book = await _context.Books.FindAsync([request.BookId], cancellationToken);
         if (book == null) throw new NotFoundException("Book", request.BookId);
@@ -257,10 +249,7 @@ public class UpdateUserBookStatusCommandHandler : IRequestHandler<UpdateUserBook
 
     public async Task<bool> Handle(UpdateUserBookStatusCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var userBook = await _context.UserBooks
             .FirstOrDefaultAsync(ub => ub.UserId == userId && ub.BookId == request.BookId, cancellationToken);
@@ -301,10 +290,7 @@ public class RemoveBookFromLibraryCommandHandler : IRequestHandler<RemoveBookFro
 
     public async Task<bool> Handle(RemoveBookFromLibraryCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var userBook = await _context.UserBooks
             .FirstOrDefaultAsync(ub => ub.UserId == userId && ub.BookId == request.BookId, cancellationToken);
@@ -357,10 +343,7 @@ public class FavoriteBookCommandHandler : IRequestHandler<FavoriteBookCommand, b
 
     public async Task<bool> Handle(FavoriteBookCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var exists = await _context.FavoriteBooks
             .AnyAsync(f => f.UserId == userId && f.BookId == request.BookId, cancellationToken);
@@ -390,10 +373,7 @@ public class UnfavoriteBookCommandHandler : IRequestHandler<UnfavoriteBookComman
 
     public async Task<bool> Handle(UnfavoriteBookCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var favorite = await _context.FavoriteBooks
             .FirstOrDefaultAsync(f => f.UserId == userId && f.BookId == request.BookId, cancellationToken);

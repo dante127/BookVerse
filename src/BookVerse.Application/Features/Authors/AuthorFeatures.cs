@@ -1,4 +1,6 @@
 using BookVerse.Application.Common.Exceptions;
+using BookVerse.Application.Common.Services;
+using BookVerse.Application.Common.Extensions;
 using BookVerse.Application.Common.Interfaces;
 using BookVerse.Application.Common.Models;
 using BookVerse.Domain.Entities.Authors;
@@ -161,7 +163,7 @@ public class CreateAuthorCommandHandler : IRequestHandler<CreateAuthorCommand, G
 
     public async Task<Guid> Handle(CreateAuthorCommand request, CancellationToken cancellationToken)
     {
-        var baseSlug = request.Name.Trim().ToLowerInvariant().Replace(' ', '-');
+        var baseSlug = Slug.Slugify(request.Name);
         var slug = baseSlug;
         var counter = 1;
 
@@ -202,10 +204,7 @@ public class FollowAuthorCommandHandler : IRequestHandler<FollowAuthorCommand, b
 
     public async Task<bool> Handle(FollowAuthorCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var author = await _context.Authors.FindAsync([request.AuthorId], cancellationToken);
         if (author == null) throw new NotFoundException("Author", request.AuthorId);
@@ -240,10 +239,7 @@ public class UnfollowAuthorCommandHandler : IRequestHandler<UnfollowAuthorComman
 
     public async Task<bool> Handle(UnfollowAuthorCommand request, CancellationToken cancellationToken)
     {
-        if (!_currentUserService.IsAuthenticated || _currentUserService.UserId == null)
-            throw new UnauthorizedException();
-
-        var userId = _currentUserService.UserId.Value;
+        var userId = _currentUserService.RequireUserId();
 
         var follower = await _context.AuthorFollowers
             .FirstOrDefaultAsync(af => af.UserId == userId && af.AuthorId == request.AuthorId, cancellationToken);

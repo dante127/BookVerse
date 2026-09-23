@@ -1,4 +1,5 @@
 using BookVerse.Application.Common.Interfaces;
+using BookVerse.Application.Common.Services;
 using BookVerse.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,7 +21,7 @@ public class DeterministicRecommendationService : IRecommendationService
         int limit = 10,
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = $"recs:user:{userId}";
+        var cacheKey = CacheKeys.UserRecommendations(userId);
         var cached = await _cacheService.GetAsync<List<RecommendedBookDto>>(cacheKey, cancellationToken);
         if (cached != null) return cached;
 
@@ -163,7 +164,7 @@ public class DeterministicRecommendationService : IRecommendationService
             .Take(limit)
             .ToList();
 
-        await _cacheService.SetAsync(cacheKey, results, TimeSpan.FromMinutes(15), cancellationToken);
+        await _cacheService.SetAsync(cacheKey, results, CacheTtls.UserRecommendations, cancellationToken);
 
         return results;
     }
@@ -259,7 +260,7 @@ public class DeterministicRecommendationService : IRecommendationService
         int limit = 10,
         CancellationToken cancellationToken = default)
     {
-        const string cacheKey = "books:trending";
+        const string cacheKey = CacheKeys.TrendingBooks;
         var cached = await _cacheService.GetAsync<List<RecommendedBookDto>>(cacheKey, cancellationToken);
         if (cached != null) return cached;
 
@@ -331,7 +332,7 @@ public class DeterministicRecommendationService : IRecommendationService
         .Take(limit)
         .ToList();
 
-        await _cacheService.SetAsync(cacheKey, trendingList, TimeSpan.FromMinutes(5), cancellationToken);
+        await _cacheService.SetAsync(cacheKey, trendingList, CacheTtls.TrendingBooks, cancellationToken);
 
         return trendingList;
     }
